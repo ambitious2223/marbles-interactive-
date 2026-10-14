@@ -79,6 +79,11 @@ func _on_gift(ev: Dictionary) -> void:
 	var avatar := str(ev.get("avatar", "")).strip_edges()
 	if avatar != "":
 		_fetch_avatar(user, avatar)
+	_main.hud_alert(user, str(ev.get("giftName", "a gift")), avatar, str(ev.get("tier", "small")))
+	_main.hud_feed(
+		"🎁 @%s sent %s (%d coins)" % [user, str(ev.get("giftName", "gift")), int(ev.get("coins", 0))],
+		Color(1.0, 0.82, 0.5)
+	)
 
 
 func _on_effect(ef: Dictionary) -> void:
@@ -89,4 +94,6 @@ func _on_effect(ef: Dictionary) -> void:
 	var payload: Dictionary = ef.get("payload", {}) if typeof(ef.get("payload", {})) == TYPE_DICTIONARY else {}
 	var user := str(ev.get("username", ""))
 	_main.hub_apply_effect(effect, user, payload)
+	if user != "":
+		_main.hud_feed("⚡ @%s → %s" % [user, effect], Color(0.6, 1.0, 0.72))
 	TikoraHub.ack_effect(ef.get("id", null), { "ok": true })

@@ -9,6 +9,7 @@ const Group := preload("res://scripts/constants/groups.gd")
 const NameGenerator := preload("res://scripts/utils/name_generator.gd")
 const TikoraControllerScript := preload("res://scripts/tikora/tikora_controller.gd")
 const MarbleScene := preload("res://scenes/marble.tscn")
+const StreamHudScript := preload("res://scripts/ui/stream_hud.gd")
 
 # Start-grid size (grows the base's fixed 14-slot grid to ~24 marbles).
 const START_ROWS := 8
@@ -42,6 +43,7 @@ var _hub_roster: Array = []     # persistent viewer keys (one marble per viewer)
 var _hub_display := {}          # key -> display name
 var _hub_pending: Array = []    # (legacy, unused in hub mode)
 var _hub_restart_in := -1.0
+var _hud: StreamHud
 
 @onready var _pause_menu := get_node(^"%Menu") as Menu
 @onready var _race := get_node(^"%Race") as Race
@@ -63,6 +65,28 @@ func _ready() -> void:
 	reset_position()
 	set_mode(_mode)
 	add_child(TikoraControllerScript.new())
+	_add_hud()
+
+
+## Stream-facing HUD: round status, gift alerts, event feed.
+func _add_hud() -> void:
+	_hud = StreamHudScript.new()
+	add_child(_hud)
+
+
+func hud_alert(username: String, gift_name: String, avatar: String, tier: String) -> void:
+	if _hud:
+		_hud.show_alert(username, gift_name, avatar, tier)
+
+
+func hud_feed(text: String, color: Color = Color.WHITE) -> void:
+	if _hud:
+		_hud.push_feed(text, color)
+
+
+func hud_status(text: String) -> void:
+	if _hud:
+		_hud.set_status(text)
 
 
 func _exit_tree():
@@ -224,6 +248,7 @@ func _on_timer_timeout():
 	get_tree().set_pause(false)
 	_timer.start()
 	_race_has_started = true
+	hud_status("🏁 Race in progress")
 
 	# Put the camera at the right place for the start
 	replace_camera(_marble_camera, [_rotation_camera])
@@ -384,6 +409,9 @@ func _process(delta):
 	if hub_mode and _race_has_started and _hub_restart_in < 0.0:
 		if _ranking._first_marble != null and _ranking._first_marble.has_finish():
 			_hub_restart_in = 8.0
+			var winner = _ranking._first_marble
+			hud_status("🥇 %s wins!  New race shortly…" % winner.get_marble_name())
+			hud_feed("🥇 %s took 1st place" % winner.get_marble_name(), Color(1, 0.85, 0.3))
 	if _hub_restart_in >= 0.0:
 		_hub_restart_in -= delta
 		if _hub_restart_in <= 0.0:
@@ -506,6 +534,7 @@ func start_hub_round() -> void:
 	_hub_names.clear()
 	for key in _hub_roster:
 		_place_hub_marble(str(_hub_display.get(key, key)))
+	hud_status("Comment to join — starting soon…")
 	_countdown.connect("countdown_finished", _on_timer_timeout, CONNECT_ONE_SHOT)
 	_countdown.start()
 
@@ -547,10 +576,13 @@ func hub_join(username: String) -> void:
 	if _mode != State.MODE_MARBLE:
 		return
 	var existing = _hub_names.get(key)
-	if existing != null and is_instance_valid(existing) and existing.visible:
+	# Already in this round (even if they finished / went out of bounds) — no dup.
+	if existing != null and is_instance_valid(existing):
 		return
 	if _place_hub_marble(uname) != null:
 		print("[MarbleRoyale] join: ", uname)
+		hud_status("🏁 %d marbles racing — comment to join" % _hub_names.size())
+		hud_feed("➕ @%s joined" % uname, Color(0.7, 0.9, 1.0))
 
 
 func hub_marble_for(username: String) -> Marble:
