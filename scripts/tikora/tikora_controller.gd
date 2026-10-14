@@ -33,6 +33,7 @@ func _on_chat(ev: Dictionary) -> void:
 	# Any comment joins the race for free (explicit "!join" also works).
 	_main.hub_join(user)
 	var avatar := str(ev.get("avatar", "")).strip_edges()
+	_main.hub_set_avatar(user, avatar)
 	if avatar != "":
 		_fetch_avatar(user, avatar)
 
@@ -77,6 +78,7 @@ func _on_gift(ev: Dictionary) -> void:
 	# Cosmetic side-effect: the gifter's marble wears their gift tier (color/glow).
 	_main.hub_set_tier(user, str(ev.get("tier", "small")))
 	var avatar := str(ev.get("avatar", "")).strip_edges()
+	_main.hub_set_avatar(user, avatar)
 	if avatar != "":
 		_fetch_avatar(user, avatar)
 	_main.hud_alert(user, str(ev.get("giftName", "a gift")), avatar, str(ev.get("tier", "small")))

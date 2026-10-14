@@ -98,15 +98,15 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
 ## 7. Current status / known limits
 
 - **Works & verified:** hub connect + auth; comment→join (persistent roster, no dupes); gift→effect
-  routing; tier skins; profile-photo faces; capacity 24; camera follows the leader; auto round loop;
-  stream HUD (round status + gift alerts with avatars + event feed); registered in Tikora as
-  `marble-royale`.
+  routing; tier skins; profile-photo faces; capacity 24; camera follows the leader; auto round loop
+  with a 75s time-limit guard; stream HUD (round status + gift alerts with avatars + event feed);
+  lobby countdown + winner celebration; registered in Tikora as `marble-royale`.
 - **Open / TODO:**
   - **Visual direction: clean / polished.** A retro/PS1 pass (low-res + dither + fog) was tried and
     **rejected by the owner** — do **not** re-apply it. Prefer clean rendering + on-screen polish.
   - Verify a real live session launched from the Tikora **Game Store** (with real avatars).
   - `shield` effect is a no-op placeholder.
-  - Missing polish: sound (boost/hazard/win cues), dedicated kill-feed, lobby countdown UI.
+  - Missing polish: sound (boost/hazard/win cues); dedicated kill-feed.
   - Raise capacity toward 40 (currently 24 = `START_ROWS` × `START_COLS`).
   - Export presets + a built `.exe` for `start.bat` (currently dev fallback runs the editor).
 

@@ -14,6 +14,8 @@ const StreamHudScript := preload("res://scripts/ui/stream_hud.gd")
 # Start-grid size (grows the base's fixed 14-slot grid to ~24 marbles).
 const START_ROWS := 8
 const START_COLS := 3
+# Hard cap on a hub round so a stuck marble can never hang the loop.
+const ROUND_MAX := 75.0
 
 const TIME_PERIOD := 5  # 500ms
 
@@ -41,8 +43,10 @@ var _hub_names := {}            # lower(username) -> Marble (current round)
 var _hub_tiers := {}            # lower(username) -> tier (persists across rounds)
 var _hub_roster: Array = []     # persistent viewer keys (one marble per viewer)
 var _hub_display := {}          # key -> display name
+var _hub_avatars := {}          # key -> profile photo URL
 var _hub_pending: Array = []    # (legacy, unused in hub mode)
 var _hub_restart_in := -1.0
+var _hub_round_time := 0.0
 var _hud: StreamHud
 
 @onready var _pause_menu := get_node(^"%Menu") as Menu
@@ -87,6 +91,30 @@ func hud_feed(text: String, color: Color = Color.WHITE) -> void:
 func hud_status(text: String) -> void:
 	if _hud:
 		_hud.set_status(text)
+
+
+func hud_celebrate(username: String, avatar: String) -> void:
+	if _hud:
+		_hud.celebrate(username, avatar)
+
+
+## Remember a viewer's profile photo so alerts/celebration can show it.
+func hub_set_avatar(username: String, url: String) -> void:
+	if url != "":
+		_hub_avatars[username.to_lower()] = url
+
+
+## Finish a hub round: crown the winner, celebrate, and schedule the restart.
+func _end_hub_round(winner) -> void:
+	_hub_restart_in = 8.0
+	if winner == null:
+		hud_status("Round over — new race shortly…")
+		return
+	var wname := str(winner.get_marble_name())
+	print("[MarbleRoyale] round over — winner: ", wname)
+	hud_status("🥇 %s wins!  New race shortly…" % wname)
+	hud_feed("🥇 %s took 1st place" % wname, Color(1, 0.85, 0.3))
+	hud_celebrate(wname, str(_hub_avatars.get(wname.to_lower(), "")))
 
 
 func _exit_tree():
@@ -248,6 +276,7 @@ func _on_timer_timeout():
 	get_tree().set_pause(false)
 	_timer.start()
 	_race_has_started = true
+	_hub_round_time = 0.0
 	hud_status("🏁 Race in progress")
 
 	# Put the camera at the right place for the start
@@ -405,13 +434,13 @@ func _process(delta):
 			if _mode == State.MODE_PAUSE and _pause_menu.is_quit():
 				set_mode(State.MODE_START)
 
-	# In hub mode, end the round shortly after the first marble finishes.
+	# Hub mode: end the round when the leader finishes, or when the time limit hits
+	# (so a stuck marble can never hang the loop).
 	if hub_mode and _race_has_started and _hub_restart_in < 0.0:
-		if _ranking._first_marble != null and _ranking._first_marble.has_finish():
-			_hub_restart_in = 8.0
-			var winner = _ranking._first_marble
-			hud_status("🥇 %s wins!  New race shortly…" % winner.get_marble_name())
-			hud_feed("🥇 %s took 1st place" % winner.get_marble_name(), Color(1, 0.85, 0.3))
+		_hub_round_time += delta
+		var lead = _ranking._first_marble
+		if lead != null and (lead.has_finish() or _hub_round_time >= ROUND_MAX):
+			_end_hub_round(lead)
 	if _hub_restart_in >= 0.0:
 		_hub_restart_in -= delta
 		if _hub_restart_in <= 0.0:
@@ -437,7 +466,9 @@ func _process(delta):
 		if not found:
 			replace_camera(_rotation_camera, [_marble_camera])
 
-			if _race_has_started:
+			# In hub mode the round end is handled by _end_hub_round (a late first
+			# joiner must not be mistaken for "everyone finished").
+			if _race_has_started and not hub_mode:
 				_race_has_started = false
 				_podium.show()
 				_podium.set_first(_ranking._first_marble)

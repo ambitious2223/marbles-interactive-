@@ -11,7 +11,11 @@ var _alert: PanelContainer
 var _alert_avatar: TextureRect
 var _alert_text: RichTextLabel
 var _feed: VBoxContainer
+var _celebrate: PanelContainer
+var _celebrate_avatar: TextureRect
+var _celebrate_text: RichTextLabel
 var _alert_tween: Tween
+var _celebrate_tween: Tween
 var _avatar_cache := {}
 
 const TIER_COLORS := {
@@ -95,6 +99,44 @@ func _build_ui() -> void:
 	_feed.add_theme_constant_override("separation", 4)
 	root.add_child(_feed)
 
+	# --- Winner celebration (center) ---
+	_celebrate = PanelContainer.new()
+	_celebrate.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_celebrate.offset_left = -300
+	_celebrate.offset_right = 300
+	_celebrate.offset_top = -130
+	_celebrate.offset_bottom = 130
+	_celebrate.modulate.a = 0.0
+	var cb := StyleBoxFlat.new()
+	cb.bg_color = Color(0.08, 0.06, 0.02, 0.86)
+	cb.border_color = Color(1.0, 0.82, 0.28, 0.95)
+	cb.set_border_width_all(3)
+	cb.set_corner_radius_all(18)
+	cb.set_content_margin_all(18)
+	_celebrate.add_theme_stylebox_override("panel", cb)
+	root.add_child(_celebrate)
+
+	var cvb := VBoxContainer.new()
+	cvb.alignment = BoxContainer.ALIGNMENT_CENTER
+	cvb.add_theme_constant_override("separation", 10)
+	_celebrate.add_child(cvb)
+
+	_celebrate_avatar = TextureRect.new()
+	_celebrate_avatar.custom_minimum_size = Vector2(140, 140)
+	_celebrate_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_celebrate_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_celebrate_avatar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_celebrate_avatar.visible = false
+	cvb.add_child(_celebrate_avatar)
+
+	_celebrate_text = RichTextLabel.new()
+	_celebrate_text.bbcode_enabled = true
+	_celebrate_text.fit_content = true
+	_celebrate_text.scroll_active = false
+	_celebrate_text.add_theme_font_size_override("normal_font_size", 30)
+	_celebrate_text.add_theme_font_size_override("bold_font_size", 46)
+	cvb.add_child(_celebrate_text)
+
 
 # --- Public API -------------------------------------------------------------
 
@@ -139,14 +181,36 @@ func push_feed(text: String, color: Color = Color.WHITE) -> void:
 # --- Helpers ----------------------------------------------------------------
 
 func _set_alert_avatar(url: String) -> void:
+	_load_remote_avatar(url, _alert_avatar)
+
+
+## Big winner celebration with the champion's avatar.
+func celebrate(username: String, avatar_url: String) -> void:
+	if _celebrate == null:
+		return
+	_celebrate_text.text = "[center][b]🏆 %s[/b]\n[b]WINS![/b][/center]" % _esc(username)
+	_load_remote_avatar(avatar_url, _celebrate_avatar)
+	if _celebrate_tween and _celebrate_tween.is_valid():
+		_celebrate_tween.kill()
+	_celebrate.modulate.a = 0.0
+	_celebrate_tween = create_tween()
+	_celebrate_tween.tween_property(_celebrate, "modulate:a", 1.0, 0.25)
+	_celebrate_tween.tween_interval(4.5)
+	_celebrate_tween.tween_property(_celebrate, "modulate:a", 0.0, 0.6)
+
+
+func _load_remote_avatar(url: String, target: TextureRect) -> void:
+	if target == null:
+		return
 	if url == "":
-		_alert_avatar.visible = false
+		target.visible = false
 		return
 	if _avatar_cache.has(url):
-		_alert_avatar.texture = _avatar_cache[url]
-		_alert_avatar.visible = _avatar_cache[url] != null
+		var cached = _avatar_cache[url]
+		target.texture = cached
+		target.visible = cached != null
 		return
-	_alert_avatar.visible = false
+	target.visible = false
 	var http := HTTPRequest.new()
 	http.timeout = 8.0
 	add_child(http)
@@ -154,9 +218,9 @@ func _set_alert_avatar(url: String) -> void:
 		func(_r: int, _c: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 			var tex := _decode(body)
 			_avatar_cache[url] = tex
-			if tex != null and is_instance_valid(_alert_avatar):
-				_alert_avatar.texture = tex
-				_alert_avatar.visible = true
+			if tex != null and is_instance_valid(target):
+				target.texture = tex
+				target.visible = true
 			http.queue_free()
 	)
 	if http.request(url) != OK:
