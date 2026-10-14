@@ -99,15 +99,14 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
 
 - **Works & verified:** hub connect + auth; comment→join (persistent roster, no dupes); gift→effect
   routing; tier skins; profile-photo faces; capacity 24; camera follows the leader; auto round loop;
-  PS1 visual pass (640×360 integer-scaled render, dither + colour quantization post, fog);
   registered in Tikora as `marble-royale`.
 - **Open / TODO:**
+  - PS1 visual pass (SubViewport low-res + dither + fog + low-poly).
   - Verify a real live session launched from the Tikora **Game Store** (with real avatars).
   - `shield` effect is a no-op placeholder.
   - No sound/HUD yet (gift alerts, kill feed, lobby timer UI).
   - Raise capacity toward 40 (currently 24 = `START_ROWS` × `START_COLS`).
   - Export presets + a built `.exe` for `start.bat` (currently dev fallback runs the editor).
-  - Optional PS1 extras: vertex snapping / affine texture mapping (needs material shaders).
 
 ## 8. Quick facts
 
