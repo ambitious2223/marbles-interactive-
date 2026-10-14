@@ -51,6 +51,59 @@ func set_marble_name(marble_name: StringName) -> void:
 	_name.set_text(marble_name)
 
 
+# --- Gifter skins (color/tier + profile-photo face) ---
+const TIER_COLORS := {
+	"small": Color(0.90, 0.90, 0.90),
+	"medium": Color(0.30, 0.85, 0.35),
+	"large": Color(0.30, 0.55, 1.00),
+	"epic": Color(0.72, 0.32, 1.00),
+	"legendary": Color(1.00, 0.80, 0.20),
+}
+
+var _skin_color := Color.WHITE
+var _emissive := 0.0
+var _face_tex: Texture2D = null
+
+
+## Set the marble's skin from a gift/donor tier (small…legendary).
+func set_skin_tier(tier: String) -> void:
+	_skin_color = TIER_COLORS.get(tier.to_lower(), Color(0.9, 0.9, 0.9))
+	_emissive = 0.7 if tier.to_lower() in ["large", "epic", "legendary"] else 0.0
+	_apply_skin()
+
+
+## Wrap a viewer's profile photo onto the marble.
+func set_face_texture(tex: Texture2D) -> void:
+	_face_tex = tex
+	_apply_skin()
+
+
+func reset_skin() -> void:
+	_skin_color = Color(randf(), randf(), randf())
+	_emissive = 0.0
+	_face_tex = null
+	_apply_skin()
+
+
+func _apply_skin() -> void:
+	if _ball_mesh == null:
+		return
+	var base = _ball_mesh.get_active_material(0)
+	if base == null:
+		return
+	var own: StandardMaterial3D = base.duplicate()
+	if _face_tex != null:
+		own.albedo_texture = _face_tex
+		own.albedo_color = Color.WHITE
+	else:
+		own.albedo_texture = null
+		own.albedo_color = _skin_color
+	own.emission_enabled = _emissive > 0.0
+	own.emission = _skin_color
+	own.emission_energy_multiplier = _emissive
+	_ball_mesh.set_surface_override_material(0, own)
+
+
 func get_marble_name() -> StringName:
 	return _name.get_text()
 

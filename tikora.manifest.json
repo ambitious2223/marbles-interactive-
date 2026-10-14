@@ -1,0 +1,45 @@
+{
+  "slug": "marble-royale",
+  "name": "Marble Royale",
+  "effects": [
+    { "key": "boost", "label": "Boost own marble", "kind": "powerup",
+      "params": [{ "key": "strength", "label": "Strength", "type": "number" }] },
+    { "key": "shield", "label": "Shield own marble", "kind": "powerup",
+      "params": [{ "key": "seconds", "label": "Seconds", "type": "number" }] },
+    { "key": "hazard_shell", "label": "Shell the leader", "kind": "action",
+      "params": [{ "key": "target", "label": "Target", "type": "text" }] },
+    { "key": "hazard_banana", "label": "Banana the leader", "kind": "action",
+      "params": [{ "key": "target", "label": "Target", "type": "text" }] },
+    { "key": "hazard_bomb", "label": "Bomb", "kind": "action",
+      "params": [{ "key": "target", "label": "Target", "type": "text" }] },
+    { "key": "slow_leader", "label": "Slow the leader", "kind": "action",
+      "params": [{ "key": "seconds", "label": "Seconds", "type": "number" }] },
+    { "key": "freeze_pack", "label": "Freeze the pack", "kind": "action",
+      "params": [{ "key": "seconds", "label": "Seconds", "type": "number" }] },
+    { "key": "magnet", "label": "Magnet (pull back rivals)", "kind": "action" },
+    { "key": "teleport", "label": "Teleport forward", "kind": "powerup" },
+    { "key": "spawn_decoys", "label": "Spawn decoy marbles", "kind": "powerup",
+      "params": [{ "key": "count", "label": "Count", "type": "number" }] },
+    { "key": "chaos", "label": "CHAOS (shake everyone)", "kind": "action" },
+    { "key": "grant_skin", "label": "Grant skin", "kind": "cosmetic",
+      "params": [{ "key": "skin_id", "label": "Skin", "type": "text" }] },
+    { "key": "use_avatar_face", "label": "Use profile photo as marble face", "kind": "cosmetic" }
+  ],
+  "events": [
+    { "key": "gift", "label": "Gift received" },
+    { "key": "comment", "label": "Comment" },
+    { "key": "like", "label": "Like" },
+    { "key": "follow", "label": "Follow" },
+    { "key": "share", "label": "Share" },
+    { "key": "subscribe", "label": "Subscribe" },
+    { "key": "member", "label": "Member join" }
+  ],
+  "defaultMappings": [
+    { "trigger_type": "tier", "trigger_ref": "small", "effect_key": "boost" },
+    { "trigger_type": "tier", "trigger_ref": "medium", "effect_key": "hazard_banana" },
+    { "trigger_type": "tier", "trigger_ref": "large", "effect_key": "hazard_shell" },
+    { "trigger_type": "tier", "trigger_ref": "epic", "effect_key": "chaos" },
+    { "trigger_type": "tier", "trigger_ref": "legendary", "effect_key": "chaos" },
+    { "trigger_type": "min_coins", "trigger_ref": "100", "effect_key": "hazard_bomb" }
+  ]
+}

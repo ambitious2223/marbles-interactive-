@@ -7,6 +7,12 @@ const RotationCameraScene := preload("res://scenes/camera/rotation_camera.tscn")
 const MarbleCameraScene := preload("res://scenes/camera/marble_camera.tscn")
 const Group := preload("res://scripts/constants/groups.gd")
 const NameGenerator := preload("res://scripts/utils/name_generator.gd")
+const TikoraControllerScript := preload("res://scripts/tikora/tikora_controller.gd")
+const MarbleScene := preload("res://scenes/marble.tscn")
+
+# Start-grid size (grows the base's fixed 14-slot grid to ~24 marbles).
+const START_ROWS := 8
+const START_COLS := 3
 
 const TIME_PERIOD := 5  # 500ms
 
@@ -28,6 +34,13 @@ var _old_lap_count := 0
 # TODO : remove this limit
 var _positions := []
 
+# --- Tikora hub mode ---
+var hub_mode := false
+var _hub_names := {}            # lower(username) -> Marble
+var _hub_tiers := {}            # lower(username) -> tier (persists across rounds)
+var _hub_pending: Array = []    # usernames queued for the next round
+var _hub_restart_in := -1.0
+
 @onready var _pause_menu := get_node(^"%Menu") as Menu
 @onready var _race := get_node(^"%Race") as Race
 @onready var _overlay := get_node(^"%Overlay") as Overlay
@@ -47,6 +60,7 @@ func _ready() -> void:
 	_marble_camera = MarbleCameraScene.instantiate()
 	reset_position()
 	set_mode(_mode)
+	add_child(TikoraControllerScript.new())
 
 
 func _exit_tree():
@@ -119,8 +133,8 @@ func _unhandled_input(event):
 # Reset marble positions
 func reset_position() -> void:
 	_positions = []
-	for i in range(7):
-		for j in range(2):
+	for i in range(START_ROWS):
+		for j in range(START_COLS):
 			_positions.append([i, j])
 
 
@@ -146,9 +160,9 @@ func try_place_start_marble() -> Marble:
 
 	new_marble.position = (
 		piece.position
-		+ Vector3.UP * 5
-		+ Vector3.FORWARD * (position[0] - 3)
-		+ Vector3.RIGHT * (position[1] - 1)
+		+ Vector3.UP * (5.0 + position[0] * 0.5)
+		+ Vector3.FORWARD * (position[0] - (START_ROWS - 1) / 2.0)
+		+ Vector3.RIGHT * (position[1] - (START_COLS - 1) / 2.0)
 	)
 	new_marble.roll()
 	return new_marble
@@ -265,12 +279,14 @@ func set_mode(mode):
 			_rotation_camera.distance_to_target = 10.0
 
 			var names = _pause_menu.get_names()
+			if hub_mode:
+				names = _hub_pending.duplicate()
 			if len(names) > 0:
 				# Stop SceneTree, to make all the marbles leave at the same time
 				get_tree().set_pause(true)
 
 				# Create one marble for each name
-				for marble_name in _pause_menu.get_names():
+				for marble_name in names:
 					var marble = try_place_start_marble()
 					if marble == null:
 						break
@@ -312,7 +328,7 @@ func _process(delta):
 	_time += delta
 
 	if _time > TIME_PERIOD:
-		if _mode == State.MODE_START:
+		if _mode == State.MODE_START and not hub_mode:
 			# Regenerate race
 			_race.generate_race(true)
 
@@ -354,12 +370,23 @@ func _process(delta):
 	else:
 		_panel_timer.hide()
 
-	if not _pause_menu.visible:
-		if _mode == State.MODE_PAUSE or _mode == State.MODE_START:
-			set_mode(State.MODE_MARBLE)
-	else:
-		if _mode == State.MODE_PAUSE and _pause_menu.is_quit():
-			set_mode(State.MODE_START)
+	if not hub_mode:
+		if not _pause_menu.visible:
+			if _mode == State.MODE_PAUSE or _mode == State.MODE_START:
+				set_mode(State.MODE_MARBLE)
+		else:
+			if _mode == State.MODE_PAUSE and _pause_menu.is_quit():
+				set_mode(State.MODE_START)
+
+	# In hub mode, end the round shortly after the first marble finishes.
+	if hub_mode and _race_has_started and _hub_restart_in < 0.0:
+		if _ranking._first_marble != null and _ranking._first_marble.has_finish():
+			_hub_restart_in = 8.0
+	if _hub_restart_in >= 0.0:
+		_hub_restart_in -= delta
+		if _hub_restart_in <= 0.0:
+			_hub_restart_in = -1.0
+			start_hub_round()
 
 	if not _marble_camera.has_target() or not _marble_camera.get_target().visible:
 		var found = false
@@ -414,3 +441,158 @@ func explosion_victory(_last_marble: Marble) -> bool:
 		return true
 
 	return false
+
+
+# ============================================================================
+# Tikora hub integration
+# ============================================================================
+
+## Switch to a continuous, streamer-free round loop driven by the hub.
+func enable_hub_mode() -> void:
+	if hub_mode:
+		return
+	hub_mode = true
+	_pause_menu.close()
+	_overlay.hide()
+	_hub_pending.clear()
+	_hub_names.clear()
+	_ensure_marble_capacity(START_ROWS * START_COLS)
+	start_hub_round()
+
+
+## Grow the marble pool at runtime so we can host more than the base's 14.
+func _ensure_marble_capacity(n: int) -> void:
+	var current := _marble_pool.get_child_count()
+	for _i in range(current, n):
+		_marble_pool.add_child(MarbleScene.instantiate())
+	_marbles = _marble_pool.get_children()
+	print("[MarbleRoyale] marble capacity: %d" % _marbles.size())
+
+
+## Begin a fresh round: build a track, drop queued joiners, run the countdown.
+func start_hub_round() -> void:
+	_hub_restart_in = -1.0
+	for marble in _marbles:
+		marble.pause()
+	_overlay.reset()
+	reset_position()
+	_explosion_enabled = false
+	_race.generate_race(true)
+	_lower_boundary = get_lowest_piece(_race, true).global_transform.origin.y
+	_max_checkpoint_count = -1
+	_old_lap_count = 0
+	_podium.hide()
+	_overlay.show()
+	replace_camera(_rotation_camera, [_marble_camera])
+	_rotation_camera.target = get_highest_piece().global_position + Vector3.UP * 5
+	_rotation_camera.distance_to_target = 10.0
+	_mode = State.MODE_MARBLE
+	# Freeze until the countdown so everyone leaves together.
+	get_tree().set_pause(true)
+	for name in _hub_pending:
+		_place_hub_marble(str(name))
+	_hub_pending.clear()
+	_countdown.connect("countdown_finished", _on_timer_timeout, CONNECT_ONE_SHOT)
+	_countdown.start()
+
+
+func _place_hub_marble(username: String) -> Marble:
+	var marble := try_place_start_marble()
+	if marble == null:
+		return null
+	marble.set_marble_name(username)
+	marble.reset_skin()
+	var tier = _hub_tiers.get(username.to_lower())
+	if tier != null:
+		marble.set_skin_tier(str(tier))
+	_overlay.add_marble_rank(marble)
+	_hub_names[username.to_lower()] = marble
+	_marble_camera.set_target(marble)
+	return marble
+
+
+## Give a viewer a skin tier (persists across rounds; applied on next spawn too).
+func hub_set_tier(username: String, tier: String) -> void:
+	_hub_tiers[username.to_lower()] = tier
+	var m := hub_marble_for(username)
+	if m != null:
+		m.set_skin_tier(tier)
+
+
+## A viewer joined (comment). Place now if racing, otherwise queue for next round.
+func hub_join(username: String) -> void:
+	var uname := username.strip_edges()
+	if uname == "":
+		return
+	if _mode == State.MODE_MARBLE:
+		var existing = _hub_names.get(uname.to_lower())
+		if existing != null and existing.visible:
+			return
+		if _place_hub_marble(uname) != null:
+			print("[MarbleRoyale] join: ", uname)
+	else:
+		if not _hub_pending.has(uname):
+			_hub_pending.append(uname)
+
+
+func hub_marble_for(username: String) -> Marble:
+	var m = _hub_names.get(username.to_lower())
+	if m != null and is_instance_valid(m) and m.visible:
+		return m
+	return null
+
+
+## Apply a routed gift effect. Physics-only for now; skins come next.
+func hub_apply_effect(effect: String, username: String, payload: Dictionary) -> void:
+	match effect:
+		"boost":
+			var t := hub_marble_for(username)
+			if t != null:
+				t.linear_velocity *= 2.0
+		"hazard_shell", "hazard_bomb":
+			var leader = _ranking._first_marble
+			if leader != null:
+				leader.linear_velocity *= 0.15
+		"hazard_banana", "slow_leader":
+			var leader2 = _ranking._first_marble
+			if leader2 != null:
+				leader2.linear_velocity *= 0.4
+		"freeze_pack":
+			for m in _marbles:
+				if m.visible and m.in_race():
+					m.linear_velocity *= 0.25
+		"magnet":
+			var t2 := hub_marble_for(username)
+			if t2 != null:
+				for m in _marbles:
+					if m != t2 and m.visible and m.in_race():
+						m.linear_velocity *= 0.6
+		"teleport":
+			var t3 := hub_marble_for(username)
+			if t3 != null:
+				var v: Vector3 = t3.linear_velocity
+				if v.length() > 0.5:
+					t3.linear_velocity = v.normalized() * (v.length() + 8.0)
+				else:
+					t3.linear_velocity += Vector3(0, 0, -8.0)
+		"spawn_decoys":
+			var n := int(payload.get("count", 2))
+			for i in range(max(1, n)):
+				var d := try_place_start_marble()
+				if d != null:
+					d.set_marble_name("%s#%d" % [username, i + 1])
+					_overlay.add_marble_rank(d)
+		"chaos":
+			for m in _marbles:
+				if m.visible and m.in_race():
+					m.linear_velocity += Vector3(randf_range(-4, 4), 3.0, randf_range(-4, 4))
+		"grant_skin":
+			var skin := str(payload.get("skin_id", ""))
+			if skin != "":
+				hub_set_tier(username, skin)
+		"shield", "use_avatar_face":
+			pass  # cosmetic pass (next step)
+		_:
+			pass
+	print("[MarbleRoyale] effect '%s' -> %s" % [effect, username])
+

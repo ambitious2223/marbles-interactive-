@@ -12,13 +12,17 @@ config_version=5
 
 universal_fade/patterns_directory="res://addons/UniversalFade/Patterns"
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="Marble"
 config/version="1.6.1"
 run/main_scene="res://scenes/main.tscn"
 config/project_settings_override="override.cfg"
-config/features=PackedStringArray("4.4")
+config/features=PackedStringArray("4.7")
 run/max_fps=60
 config/icon="res://assets/icon.png"
 
@@ -31,6 +35,7 @@ default_bus_layout="res://resources/default_bus_layout.tres"
 SettingsManager="*res://scripts/framework/settings_manager.gd"
 Shake="*res://scripts/shake.gd"
 DebugMenu="*res://addons/debug_menu/debug_menu.tscn"
+TikoraHub="*res://scripts/tikora/tikora_hub.gd"
 
 [build_info]
 
@@ -48,6 +53,10 @@ build_info/date="2025/03/04"
 window/stretch/mode="viewport"
 window/size/width=1280
 window/size/height=720
+
+[dotnet]
+
+project/assembly_name="Marble"
 
 [editor_plugins]
 
