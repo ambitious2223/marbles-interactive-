@@ -14,35 +14,19 @@ catalog here. If a task seems to need TikTok code, it belongs in Tikora, not the
 TikTok ─▶ Tikora hub (owns everything TikTok) ─▶ ws://127.0.0.1:27016 ─▶ this game
 ```
 
-## 1. Never claim something works without proving it
+## 1. Don't test — write the code
 
-Before saying a change is done, **actually run it and look at the output**:
+**Testing is the human's job, not yours.** The fastest path is for you to ship code; the human
+runs Godot and reports back. So:
 
-1. **Import after code/scene changes** (catches parse errors):
-   ```
-   godot --headless --path . --import
-   ```
-2. **Run headless with the hub and inject events**, then read the log:
-   ```
-   # PowerShell
-   $env:TIKORA_RELAY_URL="ws://127.0.0.1:27016/"
-   $env:TIKORA_GAME_KEY="gk_…"            # from Tikora → Game Hub
-   $env:TIKORA_DEBUG="1"
-   # (run godot, then, in another shell:)
-   node tools/inject.cjs
-   ```
-   The game prints `[TikoraHub] …` and `[MarbleRoyale] join:/effect …`.
-   A run is **not** done if it shows `SCRIPT ERROR`, `Parse Error`, or `Nonexistent function`.
-3. **For visual changes**, run it windowed, capture with `tools/screenshot.ps1`, and *look at the
-   PNG* before describing it:
-   ```
-   powershell -ExecutionPolicy Bypass -File tools/screenshot.ps1 -ProcessId <pid> -Out shot.png
-   ```
-4. Report in plain language: **what you built, what you verified** (specifics: "ran headless,
-   injected `alice` + a Rose gift, saw `join: alice` and `effect 'boost'` with no errors"), **and
-   what is still untested.**
+- **Do not** run the game, `--import`, headless runs, `tools/inject.cjs`, `tools/screenshot.ps1`,
+  or any other verification step. Don't launch Godot at all.
+- Do **not** create test/screenshot artifacts, or spend turns trying to prove something works.
+- Write small, correct, idiomatic GDScript/edits. Prefer the fastest, simplest implementation.
+- Report plainly: **what you changed and why.** Leave verification to the human.
 
-Fix errors and re-verify up to 3 times before asking for help.
+If you genuinely need something only a run can answer, **ask the human to run it** instead of
+running it yourself.
 
 ## 2. Where code goes (respect the boundary)
 
@@ -61,8 +45,7 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
 1. Add the effect to `tikora.manifest.json` → `effects[]` (`key`, `label`, `kind`, optional `params`).
 2. Handle the key in `Main.hub_apply_effect()`.
 3. (Optional) add a `defaultMappings` entry so it works out-of-the-box.
-4. Re-import, run, and test with `tools/inject.cjs` or the Tikora Trigger → Effect mapper.
-5. Commit with a plain-language message.
+4. Commit with a plain-language message (the human tests).
 
 ## 4. Godot gotchas (learned the hard way)
 
@@ -82,8 +65,8 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
 
 - `origin` = `github.com/ambitious2223/marbles-interactive-` (push here). `upstream` = the original
   MIT Marble project (for pulling MIT updates; keep the licence intact).
-- Commit after each verified piece with a message a non-coder understands
-  (e.g. "Camera now follows the leader").
+- Commit after each piece with a message a non-coder understands
+  (e.g. "Camera now follows the leader"). The human verifies by running it.
 - Push to `origin main`. **Never force-push. Never rewrite `main` history.**
 - **No secrets in the repo.** The game's `gk_…` key lives in the hub's database, not here; nothing
   in this repo should contain a real key.

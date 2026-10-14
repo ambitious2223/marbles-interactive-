@@ -12,6 +12,7 @@ var default_values := [
 	[&"marbles", &"marble_names", ""],
 	[&"marbles", &"collision_enabled", true],
 	[&"marbles", &"explosion_enabled", false],
+	[&"marbles", &"level", 0],
 ]
 
 # If enabled, settings will be saved to file when changed

@@ -8,6 +8,7 @@ enum Action { ACTION_NOOP, ACTION_START, ACTION_RESUME, ACTION_QUIT }
 var _mode: int = State.MODE_START
 var _last_action: int = Action.ACTION_NOOP
 var _is_web_export := false
+var _level := 0
 
 @onready var _open_sound := get_node(^"%OpenSound") as AudioStreamPlayer
 @onready var _input := get_node(^"%Input") as LineEdit
@@ -16,15 +17,54 @@ var _is_web_export := false
 @onready var _quit_button := _start_button.get_node(^"VBoxContainer/QuitButton") as Button
 @onready var _collision_toggle := get_node(^"%CollisionToggle") as CheckButton
 @onready var _explosion_toggle := get_node(^"%ExplosionToggle") as CheckButton
+@onready var _level_label := get_node_or_null(^"%LevelLabel") as Label
 
 
 func _ready() -> void:
 	_input.set_text(SettingsManager.get_value(&"marbles", &"marble_names"))
+	# Enter in the name field starts the match (the field swallows the key otherwise).
+	_input.text_submitted.connect(func(_t: String) -> void: _on_StartButton_pressed())
 	_collision_toggle.button_pressed = SettingsManager.get_value(&"marbles", &"collision_enabled")
 	_explosion_toggle.button_pressed = SettingsManager.get_value(&"marbles", &"explosion_enabled")
+	_level = clampi(int(SettingsManager.get_value(&"marbles", &"level")), 0, max(0, Levels.LEVELS.size() - 1))
+	_refresh_level()
 
 	_is_web_export = OS.get_name() == "HTML5"
 	set_mode(_mode)
+
+
+# --- Level selector (solo / level tester) -----------------------------------
+
+func get_level() -> int:
+	return _level
+
+
+func set_level(idx: int) -> void:
+	_level = clampi(idx, 0, max(0, Levels.LEVELS.size() - 1))
+	_refresh_level()
+
+
+func _refresh_level() -> void:
+	if _level_label == null:
+		return
+	if Levels.LEVELS.is_empty():
+		_level_label.text = "—"
+		return
+	_level_label.text = "Level %d · %s" % [_level + 1, str(Levels.LEVELS[_level].get("name", ""))]
+
+
+func _on_PrevLevel_pressed() -> void:
+	set_level(_level - 1)
+	_persist_level()
+
+
+func _on_NextLevel_pressed() -> void:
+	set_level(_level + 1)
+	_persist_level()
+
+
+func _persist_level() -> void:
+	SettingsManager.set_value(&"marbles", &"level", _level)
 
 
 func _on_StartButton_pressed() -> void:

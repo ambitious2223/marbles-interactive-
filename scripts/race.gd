@@ -15,6 +15,12 @@ var _step_count := 10
 # Optional restricted piece set (indices into PieceList.PIECES); empty = any.
 var piece_pool: Array = []
 
+# Chance a piece gets a boost pad (0..1).
+var power_chance := 0.5
+
+# Optional material applied to every piece mesh (per-level look).
+var track_material: Material = null
+
 var _previous_piece = null
 var _previous_piece_orientation = null
 var _previous_rotation_index := 0
@@ -108,6 +114,12 @@ func place_piece(piece_index: int) -> void:
 	# Add the piece to the scene
 	add_child(piece)
 
+	# Per-level track look (overrides the piece's default material).
+	if track_material != null:
+		for child in piece.get_children():
+			if child is MeshInstance3D:
+				child.material_override = track_material
+
 	# Rotate and translate the piece
 	rotate_piece(piece)
 	translate_piece(piece)
@@ -162,8 +174,7 @@ func calculate_translation_offset(piece: Piece) -> Vector3:
 # Function to enable randomly power on the piece
 func randomize_power(piece: Piece) -> void:
 	var power = piece.get_node_or_null("Power")
-	var r := randf()
-	if power and r > 0.5:
+	if power and randf() < power_chance:
 		power.toggle(true)
 		power.set_type(power.PowerType.BOOST)
 

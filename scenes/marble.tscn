@@ -52,6 +52,10 @@ billboard = 1
 no_depth_test = true
 fixed_size = true
 render_priority = 5
+modulate = Color(0.97, 0.98, 1, 1)
+font_size = 20
+outline_size = 10
+outline_modulate = Color(0.05, 0.06, 0.1, 0.9)
 text = "toto"
 uppercase = true
 

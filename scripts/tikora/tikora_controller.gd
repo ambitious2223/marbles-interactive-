@@ -26,6 +26,9 @@ func _on_hub_connected() -> void:
 	if _main == null:
 		_main = get_parent() as Main
 	if _main:
+		if _main.solo_mode:
+			print("[MarbleRoyale] solo mode — ignoring hub connection")
+			return
 		_main.enable_hub_mode()
 
 

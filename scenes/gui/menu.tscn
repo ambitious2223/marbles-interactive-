@@ -81,6 +81,26 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Explosion mode"
 
+[node name="LevelRow" type="HBoxContainer" parent="StartMenu/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="PrevLevel" type="Button" parent="StartMenu/VBoxContainer/LevelRow"]
+layout_mode = 2
+text = "<"
+
+[node name="LevelLabel" type="Label" parent="StartMenu/VBoxContainer/LevelRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "Level 1"
+
+[node name="NextLevel" type="Button" parent="StartMenu/VBoxContainer/LevelRow"]
+layout_mode = 2
+text = ">"
+
 [node name="Spacer2" type="Control" parent="StartMenu/VBoxContainer"]
 layout_mode = 2
 
@@ -167,6 +187,8 @@ stream = ExtResource("3")
 [connection signal="text_changed" from="StartMenu/VBoxContainer/Input" to="." method="_on_Input_text_changed"]
 [connection signal="toggled" from="StartMenu/VBoxContainer/CollisionToggle" to="." method="_on_CollisionToggle_toggled"]
 [connection signal="toggled" from="StartMenu/VBoxContainer/ExplosionToggle" to="." method="_on_ExplosionToggle_toggled"]
+[connection signal="pressed" from="StartMenu/VBoxContainer/LevelRow/PrevLevel" to="." method="_on_PrevLevel_pressed"]
+[connection signal="pressed" from="StartMenu/VBoxContainer/LevelRow/NextLevel" to="." method="_on_NextLevel_pressed"]
 [connection signal="pressed" from="StartMenu/VBoxContainer/StartButton" to="." method="_on_StartButton_pressed"]
 [connection signal="pressed" from="StartMenu/VBoxContainer/QuitButton" to="." method="_on_QuitButton_pressed"]
 [connection signal="pressed" from="PauseMenu/VBoxContainer/ResumeButton" to="." method="_on_ResumeButton_pressed"]

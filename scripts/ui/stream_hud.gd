@@ -3,8 +3,17 @@ extends CanvasLayer
 ## Clean, stream-facing HUD: round status, gift alerts (with the gifter's avatar),
 ## and a live event feed. Built in code so no scene edits are needed.
 
+## Emitted when the streamer clicks a camera button in the bottom bar.
+## kind: "auto" | "overview" | "follow"; key: viewer key for follow, else "".
+signal camera_request(kind: String, key: String)
+
 const FEED_MAX := 6
 const ALERT_HOLD := 2.6
+
+const _CAM_BG := Color(0.09, 0.11, 0.17, 0.82)
+const _CAM_BD := Color(0.32, 0.48, 0.62, 0.65)
+const _CAM_ACTIVE_BG := Color(0.16, 0.42, 0.66, 0.95)
+const _CAM_ACTIVE_BD := Color(0.65, 0.9, 1.0, 1.0)
 
 var _status: Label
 var _alert: PanelContainer
@@ -19,6 +28,14 @@ var _celebrate_text: RichTextLabel
 var _alert_tween: Tween
 var _celebrate_tween: Tween
 var _avatar_cache := {}
+
+var _root: Control
+var _cam_scroll: ScrollContainer
+var _cam_bar: HBoxContainer
+var _cam_buttons := {}          # Button -> { kind, key }
+var _cam_sig := ""
+var _active_mode := "auto"
+var _active_key := ""
 
 const TIER_COLORS := {
 	"small": Color(0.86, 0.90, 0.96),
@@ -39,6 +56,8 @@ func _build_ui() -> void:
 	var root := Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.resized.connect(_recenter_pivot)
+	_root = root
 	add_child(root)
 
 	# --- Round status (top center) ---
@@ -95,9 +114,11 @@ func _build_ui() -> void:
 	_feed.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	_feed.offset_left = 18
 	_feed.offset_right = 520
-	_feed.offset_top = -210
-	_feed.offset_bottom = -18
+	_feed.offset_top = -238
+	_feed.offset_bottom = -74
 	_feed.alignment = BoxContainer.ALIGNMENT_END
+	_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_feed.clip_contents = true
 	_feed.add_theme_constant_override("separation", 4)
 	root.add_child(_feed)
 
@@ -107,7 +128,8 @@ func _build_ui() -> void:
 	_lb_panel.offset_left = -240
 	_lb_panel.offset_right = -16
 	_lb_panel.offset_top = -190
-	_lb_panel.offset_bottom = -16
+	_lb_panel.offset_bottom = -74
+	_lb_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	var lbsb := StyleBoxFlat.new()
 	lbsb.bg_color = Color(0.05, 0.06, 0.10, 0.66)
 	lbsb.set_corner_radius_all(10)
@@ -158,6 +180,26 @@ func _build_ui() -> void:
 	_celebrate_text.add_theme_font_size_override("bold_font_size", 38)
 	cvb.add_child(_celebrate_text)
 
+	# --- Camera follow bar (bottom center) ---
+	_cam_scroll = ScrollContainer.new()
+	_cam_scroll.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_cam_scroll.offset_left = 300
+	_cam_scroll.offset_right = -300
+	_cam_scroll.offset_top = -72
+	_cam_scroll.offset_bottom = -14
+	_cam_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_cam_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_cam_scroll.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_cam_scroll.visible = false
+	root.add_child(_cam_scroll)
+
+	_cam_bar = HBoxContainer.new()
+	_cam_bar.size_flags_horizontal = Control.SIZE_FILL
+	_cam_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_cam_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	_cam_bar.add_theme_constant_override("separation", 6)
+	_cam_scroll.add_child(_cam_bar)
+
 
 # --- Public API -------------------------------------------------------------
 
@@ -174,6 +216,25 @@ func set_alerts_enabled(on: bool) -> void:
 func set_feed_enabled(on: bool) -> void:
 	if _feed:
 		_feed.visible = on
+
+
+## Hide/show the whole stream HUD (hotkey). Gift alerts keep their own flag.
+func set_hud_visible(on: bool) -> void:
+	if _root:
+		_root.visible = on
+
+
+## Resize the HUD live (0.6–1.5). Scales around the screen centre.
+func set_hud_scale(s: float) -> void:
+	if _root == null:
+		return
+	_root.scale = Vector2(s, s)
+	_recenter_pivot()
+
+
+func _recenter_pivot() -> void:
+	if _root:
+		_root.pivot_offset = _root.size * 0.5
 
 
 ## All-time leaderboard from the game (entries: [{ name, wins }]).
@@ -232,6 +293,79 @@ func push_feed(text: String, color: Color = Color.WHITE) -> void:
 	while _feed.get_child_count() > FEED_MAX:
 		_feed.get_child(0).queue_free()
 		_feed.remove_child(_feed.get_child(0))
+
+
+## Rebuild the bottom camera bar. `entries` = [{ key, label }] for each racer,
+## plus a fixed Auto / Overview pair. Rebuilds only when the roster changes.
+func set_camera_targets(entries: Array) -> void:
+	if _cam_bar == null:
+		return
+	var sig := ""
+	for e in entries:
+		sig += str(e.get("key", "")) + "|"
+	_cam_scroll.visible = not entries.is_empty()
+	if sig == _cam_sig:
+		set_active_camera(_active_mode, _active_key)
+		return
+	_cam_sig = sig
+	for c in _cam_bar.get_children():
+		_cam_bar.remove_child(c)
+		c.queue_free()
+	_cam_buttons.clear()
+	_add_cam_button("Auto", "auto", "")
+	_add_cam_button("Overview", "overview", "")
+	for e in entries:
+		_add_cam_button(str(e.get("label", "?")), "follow", str(e.get("key", "")))
+	set_active_camera(_active_mode, _active_key)
+
+
+func set_camera_bar_visible(on: bool) -> void:
+	if _cam_scroll:
+		_cam_scroll.visible = on
+
+
+## Highlight the camera button currently in effect.
+func set_active_camera(mode: String, key: String) -> void:
+	_active_mode = mode
+	_active_key = key
+	for b in _cam_buttons.keys():
+		var info: Dictionary = _cam_buttons[b]
+		var active: bool = str(info.get("kind", "")) == mode and str(info.get("key", "")) == key
+		if active:
+			b.add_theme_stylebox_override("normal", _pill(_CAM_ACTIVE_BG, _CAM_ACTIVE_BD))
+		else:
+			b.add_theme_stylebox_override("normal", _pill(_CAM_BG, _CAM_BD))
+
+
+func _add_cam_button(text: String, kind: String, key: String) -> void:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(58, 34)
+	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_stylebox_override("normal", _pill(_CAM_BG, _CAM_BD))
+	b.add_theme_stylebox_override("hover", _pill(Color(0.18, 0.26, 0.36, 0.94), Color(0.55, 0.78, 0.92, 0.95)))
+	b.add_theme_stylebox_override("pressed", _pill(_CAM_ACTIVE_BG, _CAM_ACTIVE_BD))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.pressed.connect(func() -> void: camera_request.emit(kind, key))
+	_cam_bar.add_child(b)
+	_cam_buttons[b] = { "kind": kind, "key": key }
+
+
+func _pill(bg: Color, border: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(9)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	return sb
 
 
 # --- Helpers ----------------------------------------------------------------
