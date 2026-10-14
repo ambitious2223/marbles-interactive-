@@ -63,6 +63,21 @@ func _ready() -> void:
 	reset_position()
 	set_mode(_mode)
 	add_child(TikoraControllerScript.new())
+	_add_psx_post()
+
+
+## Full-screen PS1 post-process (dither + colour quantization) over everything.
+func _add_psx_post() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://shaders/psx_post.gdshader")
+	rect.material = mat
+	layer.add_child(rect)
+	add_child(layer)
 
 
 func _exit_tree():
