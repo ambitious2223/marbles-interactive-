@@ -71,6 +71,25 @@ Effects are declared in [`../tikora.manifest.json`](../tikora.manifest.json) and
 | tier `epic` / `legendary` | `chaos` |
 | `min_coins` 100 | `hazard_bomb` |
 
+## Settings (the `configure` effect)
+
+The game's runtime settings live in `Main.DEFAULT_CFG` and are **driven from the hub** — fire the
+`configure` effect (Gift Gallery → Inject, a mapping, or the Game Store "Run" button) with a payload
+containing any subset of:
+
+| Payload key | Range / values | Meaning |
+|---|---|---|
+| `capacity` | 4–40 | simultaneous marbles (pool + start grid) |
+| `round_seconds` | 20–300 | hard time-limit per round |
+| `alerts` | true/false | show gift alert toasts |
+| `feed` | true/false | show the event feed |
+| `shake` | true/false | camera shake on big effects |
+
+Example payload: `{ "capacity": 30, "round_seconds": 45, "shake": false }`.
+
+Changes apply live, persist to `user://marble_royale.cfg`, and are reported back to the hub via
+`report_state({ config })` on connect and after each change.
+
 ## Testing
 
 Run the game (editor or `start.bat`) with Tikora running, then fire test events:

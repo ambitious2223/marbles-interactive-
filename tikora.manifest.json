@@ -23,7 +23,15 @@
     { "key": "chaos", "label": "CHAOS (shake everyone)", "kind": "action" },
     { "key": "grant_skin", "label": "Grant skin", "kind": "cosmetic",
       "params": [{ "key": "skin_id", "label": "Skin", "type": "text" }] },
-    { "key": "use_avatar_face", "label": "Use profile photo as marble face", "kind": "cosmetic" }
+    { "key": "use_avatar_face", "label": "Use profile photo as marble face", "kind": "cosmetic" },
+    { "key": "configure", "label": "Configure game", "kind": "action",
+      "params": [
+        { "key": "capacity", "label": "Marble capacity (4-40)", "type": "number" },
+        { "key": "round_seconds", "label": "Round seconds (20-300)", "type": "number" },
+        { "key": "alerts", "label": "Gift alerts on/off", "type": "text" },
+        { "key": "feed", "label": "Event feed on/off", "type": "text" },
+        { "key": "shake", "label": "Screen shake on/off", "type": "text" }
+      ] }
   ],
   "events": [
     { "key": "gift", "label": "Gift received" },

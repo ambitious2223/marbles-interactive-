@@ -98,17 +98,23 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
 ## 7. Current status / known limits
 
 - **Works & verified:** hub connect + auth; comment→join (persistent roster, no dupes); gift→effect
-  routing; tier skins; profile-photo faces; capacity 24; camera follows the leader; auto round loop
-  with a 75s time-limit guard; stream HUD (round status + gift alerts with avatars + event feed);
-  lobby countdown + winner celebration; registered in Tikora as `marble-royale`.
+  routing; tier skins; profile-photo faces; camera follows the leader; auto round loop with a
+  time-limit guard; stream HUD (round status + compact corner gift toasts with avatars + event feed);
+  lobby countdown + winner celebration; **hub-driven settings** (`configure` effect, persisted);
+  resizable window + `F11` fullscreen; per-round track variety; registered in Tikora as `marble-royale`.
 - **Open / TODO:**
   - **Visual direction: clean / polished.** A retro/PS1 pass (low-res + dither + fog) was tried and
     **rejected by the owner** — do **not** re-apply it. Prefer clean rendering + on-screen polish.
   - Verify a real live session launched from the Tikora **Game Store** (with real avatars).
   - `shield` effect is a no-op placeholder.
   - Missing polish: sound (boost/hazard/win cues); dedicated kill-feed.
-  - Raise capacity toward 40 (currently 24 = `START_ROWS` × `START_COLS`).
   - Export presets + a built `.exe` for `start.bat` (currently dev fallback runs the editor).
+
+**Settings (hub-driven):** defaults live in `Main.DEFAULT_CFG`; the hub can change them by firing the
+`configure` effect with an optional payload — `capacity` (4-40), `round_seconds` (20-300), `alerts`,
+`feed`, `shake`. Applied live, saved to `user://marble_royale.cfg`, reported back via `report_state`.
+
+**Controls:** `F11` toggles fullscreen; the window is resizable (stretch mode `viewport`).
 
 ## 8. Quick facts
 

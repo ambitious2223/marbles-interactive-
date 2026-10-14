@@ -4,7 +4,7 @@ extends CanvasLayer
 ## and a live event feed. Built in code so no scene edits are needed.
 
 const FEED_MAX := 6
-const ALERT_HOLD := 3.2
+const ALERT_HOLD := 2.6
 
 var _status: Label
 var _alert: PanelContainer
@@ -51,31 +51,31 @@ func _build_ui() -> void:
 	_status.add_theme_constant_override("outline_size", 6)
 	root.add_child(_status)
 
-	# --- Gift alert (center, under status) ---
+	# --- Gift alert (compact, top-right) ---
 	_alert = PanelContainer.new()
-	_alert.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_alert.offset_left = -280
-	_alert.offset_right = 280
-	_alert.offset_top = 74
-	_alert.offset_bottom = 178
+	_alert.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_alert.offset_left = -292
+	_alert.offset_right = -16
+	_alert.offset_top = 64
+	_alert.offset_bottom = 132
 	_alert.modulate.a = 0.0
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.05, 0.06, 0.10, 0.82)
+	sb.bg_color = Color(0.05, 0.06, 0.10, 0.78)
 	sb.border_color = Color(0.30, 0.80, 0.75, 0.9)
 	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(14)
-	sb.set_content_margin_all(14)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(8)
 	_alert.add_theme_stylebox_override("panel", sb)
 	root.add_child(_alert)
 
 	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 16)
+	hb.add_theme_constant_override("separation", 10)
 	_alert.add_child(hb)
 
 	_alert_avatar = TextureRect.new()
-	_alert_avatar.custom_minimum_size = Vector2(96, 96)
+	_alert_avatar.custom_minimum_size = Vector2(48, 48)
 	_alert_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_alert_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_alert_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_alert_avatar.visible = false
 	hb.add_child(_alert_avatar)
 
@@ -83,9 +83,9 @@ func _build_ui() -> void:
 	_alert_text.bbcode_enabled = true
 	_alert_text.fit_content = true
 	_alert_text.scroll_active = false
-	_alert_text.custom_minimum_size = Vector2(420, 0)
-	_alert_text.add_theme_font_size_override("normal_font_size", 26)
-	_alert_text.add_theme_font_size_override("bold_font_size", 30)
+	_alert_text.custom_minimum_size = Vector2(196, 0)
+	_alert_text.add_theme_font_size_override("normal_font_size", 16)
+	_alert_text.add_theme_font_size_override("bold_font_size", 20)
 	hb.add_child(_alert_text)
 
 	# --- Event feed (bottom left) ---
@@ -102,27 +102,27 @@ func _build_ui() -> void:
 	# --- Winner celebration (center) ---
 	_celebrate = PanelContainer.new()
 	_celebrate.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_celebrate.offset_left = -300
-	_celebrate.offset_right = 300
-	_celebrate.offset_top = -130
-	_celebrate.offset_bottom = 130
+	_celebrate.offset_left = -240
+	_celebrate.offset_right = 240
+	_celebrate.offset_top = -104
+	_celebrate.offset_bottom = 104
 	_celebrate.modulate.a = 0.0
 	var cb := StyleBoxFlat.new()
 	cb.bg_color = Color(0.08, 0.06, 0.02, 0.86)
 	cb.border_color = Color(1.0, 0.82, 0.28, 0.95)
 	cb.set_border_width_all(3)
-	cb.set_corner_radius_all(18)
-	cb.set_content_margin_all(18)
+	cb.set_corner_radius_all(16)
+	cb.set_content_margin_all(14)
 	_celebrate.add_theme_stylebox_override("panel", cb)
 	root.add_child(_celebrate)
 
 	var cvb := VBoxContainer.new()
 	cvb.alignment = BoxContainer.ALIGNMENT_CENTER
-	cvb.add_theme_constant_override("separation", 10)
+	cvb.add_theme_constant_override("separation", 8)
 	_celebrate.add_child(cvb)
 
 	_celebrate_avatar = TextureRect.new()
-	_celebrate_avatar.custom_minimum_size = Vector2(140, 140)
+	_celebrate_avatar.custom_minimum_size = Vector2(96, 96)
 	_celebrate_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_celebrate_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_celebrate_avatar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -133,8 +133,8 @@ func _build_ui() -> void:
 	_celebrate_text.bbcode_enabled = true
 	_celebrate_text.fit_content = true
 	_celebrate_text.scroll_active = false
-	_celebrate_text.add_theme_font_size_override("normal_font_size", 30)
-	_celebrate_text.add_theme_font_size_override("bold_font_size", 46)
+	_celebrate_text.add_theme_font_size_override("normal_font_size", 24)
+	_celebrate_text.add_theme_font_size_override("bold_font_size", 38)
 	cvb.add_child(_celebrate_text)
 
 
@@ -143,6 +143,16 @@ func _build_ui() -> void:
 func set_status(text: String) -> void:
 	if _status:
 		_status.text = text
+
+
+func set_alerts_enabled(on: bool) -> void:
+	if _alert:
+		_alert.visible = on
+
+
+func set_feed_enabled(on: bool) -> void:
+	if _feed:
+		_feed.visible = on
 
 
 ## A big gift alert with the gifter's avatar.

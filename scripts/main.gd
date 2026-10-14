@@ -11,11 +11,20 @@ const TikoraControllerScript := preload("res://scripts/tikora/tikora_controller.
 const MarbleScene := preload("res://scenes/marble.tscn")
 const StreamHudScript := preload("res://scripts/ui/stream_hud.gd")
 
-# Start-grid size (grows the base's fixed 14-slot grid to ~24 marbles).
-const START_ROWS := 8
+const CONFIG_PATH := "user://marble_royale.cfg"
 const START_COLS := 3
-# Hard cap on a hub round so a stuck marble can never hang the loop.
-const ROUND_MAX := 75.0
+# Defaults — overridable from the hub via the `configure` effect (persisted).
+const DEFAULT_CFG := {
+	"capacity": 24,
+	"round_seconds": 75.0,
+	"alerts": true,
+	"feed": true,
+	"shake": true,
+}
+var cfg := DEFAULT_CFG.duplicate()
+var _grid_rows := 8
+var _round_max := 75.0
+var _track_no := 0
 
 const TIME_PERIOD := 5  # 500ms
 
@@ -64,12 +73,14 @@ var _hud: StreamHud
 
 
 func _ready() -> void:
+	_load_config()
 	_rotation_camera = RotationCameraScene.instantiate()
 	_marble_camera = MarbleCameraScene.instantiate()
 	reset_position()
 	set_mode(_mode)
 	add_child(TikoraControllerScript.new())
 	_add_hud()
+	_apply_config()
 
 
 ## Stream-facing HUD: round status, gift alerts, event feed.
@@ -117,6 +128,69 @@ func _end_hub_round(winner) -> void:
 	hud_celebrate(wname, str(_hub_avatars.get(wname.to_lower(), "")))
 
 
+# --- Settings (hub-driven, persisted to user://) ----------------------------
+
+func _load_config() -> void:
+	var f := ConfigFile.new()
+	if f.load(CONFIG_PATH) != OK:
+		return
+	for k in cfg.keys():
+		if f.has_section_key("settings", str(k)):
+			cfg[k] = f.get_value("settings", str(k))
+
+
+func _save_config() -> void:
+	var f := ConfigFile.new()
+	for k in cfg.keys():
+		f.set_value("settings", str(k), cfg[k])
+	f.save(CONFIG_PATH)
+
+
+func _apply_config() -> void:
+	cfg.capacity = clamp(int(cfg.capacity), 4, 40)
+	cfg.round_seconds = clamp(float(cfg.round_seconds), 20.0, 300.0)
+	cfg.alerts = _to_bool(cfg.alerts)
+	cfg.feed = _to_bool(cfg.feed)
+	cfg.shake = _to_bool(cfg.shake)
+	_grid_rows = int(ceil(float(cfg.capacity) / float(START_COLS)))
+	_round_max = float(cfg.round_seconds)
+	if _hud != null:
+		_hud.set_alerts_enabled(cfg.alerts)
+		_hud.set_feed_enabled(cfg.feed)
+	if hub_mode:
+		_ensure_marble_capacity(int(cfg.capacity))
+
+
+## The hub can change any setting by sending the `configure` effect with a payload.
+func _hub_configure(payload: Dictionary) -> void:
+	for k in ["capacity", "round_seconds", "alerts", "feed", "shake"]:
+		if payload.has(k):
+			cfg[k] = payload[k]
+	_apply_config()
+	_save_config()
+	print("[MarbleRoyale] configure: ", cfg)
+	hud_feed("⚙ settings: cap %d · round %ds · alerts %s · shake %s" % [
+		int(cfg.capacity), int(cfg.round_seconds), str(cfg.alerts), str(cfg.shake)
+	], Color(0.8, 0.9, 1.0))
+	report_config()
+
+
+## Push current settings back to the hub UI.
+func report_config() -> void:
+	TikoraHub.report_state({ "config": cfg, "track": _track_no })
+
+
+func _do_shake(intensity: float, dur: float) -> void:
+	if cfg.shake:
+		Shake.shake(intensity, dur)
+
+
+func _to_bool(v) -> bool:
+	if typeof(v) == TYPE_STRING:
+		return v.strip_edges().to_lower() in ["1", "true", "yes", "on"]
+	return bool(v)
+
+
 func _exit_tree():
 	if not _rotation_camera.is_inside_tree():
 		_rotation_camera.free()
@@ -128,6 +202,9 @@ func _unhandled_input(event):
 	if event is InputEventKey:
 		if event.pressed:
 			match event.keycode:
+				KEY_F11:
+					var win := get_window()
+					win.mode = Window.MODE_WINDOWED if win.mode == Window.MODE_FULLSCREEN else Window.MODE_FULLSCREEN
 				KEY_TAB:
 					if _mode == State.MODE_MARBLE:
 						var visible_marbles := []
@@ -187,7 +264,7 @@ func _unhandled_input(event):
 # Reset marble positions
 func reset_position() -> void:
 	_positions = []
-	for i in range(START_ROWS):
+	for i in range(_grid_rows):
 		for j in range(START_COLS):
 			_positions.append([i, j])
 
@@ -215,7 +292,7 @@ func try_place_start_marble() -> Marble:
 	new_marble.position = (
 		piece.position
 		+ Vector3.UP * (5.0 + position[0] * 0.5)
-		+ Vector3.FORWARD * (position[0] - (START_ROWS - 1) / 2.0)
+		+ Vector3.FORWARD * (position[0] - (_grid_rows - 1) / 2.0)
 		+ Vector3.RIGHT * (position[1] - (START_COLS - 1) / 2.0)
 	)
 	new_marble.roll()
@@ -439,7 +516,7 @@ func _process(delta):
 	if hub_mode and _race_has_started and _hub_restart_in < 0.0:
 		_hub_round_time += delta
 		var lead = _ranking._first_marble
-		if lead != null and (lead.has_finish() or _hub_round_time >= ROUND_MAX):
+		if lead != null and (lead.has_finish() or _hub_round_time >= _round_max):
 			_end_hub_round(lead)
 	if _hub_restart_in >= 0.0:
 		_hub_restart_in -= delta
@@ -528,7 +605,7 @@ func enable_hub_mode() -> void:
 	_pause_menu.close()
 	_overlay.hide()
 	_hub_names.clear()
-	_ensure_marble_capacity(START_ROWS * START_COLS)
+	_ensure_marble_capacity(int(cfg.capacity))
 	start_hub_round()
 
 
@@ -549,6 +626,9 @@ func start_hub_round() -> void:
 	_overlay.reset()
 	reset_position()
 	_explosion_enabled = false
+	# New random track each round (varied length = a fresh "level" every race).
+	_track_no += 1
+	_race._step_count = randi_range(8, 14)
 	_race.generate_race(true)
 	_lower_boundary = get_lowest_piece(_race, true).global_transform.origin.y
 	_max_checkpoint_count = -1
@@ -565,7 +645,7 @@ func start_hub_round() -> void:
 	_hub_names.clear()
 	for key in _hub_roster:
 		_place_hub_marble(str(_hub_display.get(key, key)))
-	hud_status("Comment to join — starting soon…")
+	hud_status("Track #%d — comment to join, starting soon…" % _track_no)
 	_countdown.connect("countdown_finished", _on_timer_timeout, CONNECT_ONE_SHOT)
 	_countdown.start()
 
@@ -625,6 +705,9 @@ func hub_marble_for(username: String) -> Marble:
 
 ## Apply a routed gift effect. Physics-only for now; skins come next.
 func hub_apply_effect(effect: String, username: String, payload: Dictionary) -> void:
+	if effect == "configure":
+		_hub_configure(payload)
+		return
 	match effect:
 		"boost":
 			var t := hub_marble_for(username)
@@ -634,6 +717,7 @@ func hub_apply_effect(effect: String, username: String, payload: Dictionary) -> 
 			var leader = _ranking._first_marble
 			if leader != null:
 				leader.linear_velocity *= 0.15
+			_do_shake(2.5, 0.4)
 		"hazard_banana", "slow_leader":
 			var leader2 = _ranking._first_marble
 			if leader2 != null:
@@ -667,6 +751,7 @@ func hub_apply_effect(effect: String, username: String, payload: Dictionary) -> 
 			for m in _marbles:
 				if m.visible and m.in_race():
 					m.linear_velocity += Vector3(randf_range(-4, 4), 3.0, randf_range(-4, 4))
+			_do_shake(3.5, 0.6)
 		"grant_skin":
 			var skin := str(payload.get("skin_id", ""))
 			if skin != "":

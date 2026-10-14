@@ -9,6 +9,10 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_main = get_parent() as Main
 	TikoraHub.hub_connected.connect(_on_hub_connected)
+	TikoraHub.hub_welcome.connect(func(_d: Dictionary) -> void:
+		if _main != null:
+			_main.report_config()
+	)
 	TikoraHub.chat_received.connect(_on_chat)
 	TikoraHub.gift_received.connect(_on_gift)
 	TikoraHub.effect_received.connect(_on_effect)
