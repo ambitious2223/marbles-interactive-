@@ -1,142 +1,103 @@
-
 <div align="center">
 
-# ⚽ Marble
+# 🎱 Marble Royale
 
-![Godot Badge](https://img.shields.io/badge/godot-4.4-blue?logo=Godot-Engine&logoColor=white)
-![license](https://img.shields.io/badge/license-MIT-green?logo=open-source-initiative&logoColor=white)
-![reuse](./.reuse/REUSE-compliant.svg)
+**A live TikTok marble race for the [Tikora](https://github.com/ambitious2223) hub.**
 
-A marble race minigame, made with [Godot Engine](https://godotengine.org/).
-
-<a href="https://github.com/mechanicalflower/Marble/releases/" target="_blank"><img src="public/publishing/store/github.webp" alt="Download on Github" height="40px" ></a>
-<a href="https://mechanical-flower.itch.io/marble" target="_blank"><img src="public/publishing/store/itchio.webp" alt="Download on itch.io" height="40px" ></a>
-<a href="https://snapcraft.io/marble-race"><img alt="Get it from the Snap Store" src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" height="40px"/></a>
-<a href="https://github.com/mechanicalflower/Marble/releases/"><img alt="Download as AppImage" src="https://docs.appimage.org/_images/download-appimage-banner.svg" height="40px"/></a>
-<!-- <a href="https://flathub.org/apps/details/org.mechanicalflower.Marble" target="_blank"><img src="https://flathub.org/assets/badges/flathub-badge-en.png" alt="Download on Flathub"  height="40px"></a> -->
+Viewers drop into the race by commenting; gifts fire power-ups at themselves or the leader;
+big gifters get glowing tier skins and their real TikTok profile photo wrapped onto their marble.
 
 </div>
 
-## About
+> **Built on the MIT-licensed [Marble](https://github.com/MechanicalFlower/Marble) by MechanicalFlower.**
+> This fork keeps that licence and adds a live, hub-driven mode. See [Attribution](#attribution--license).
 
-Marble is an open source mini-game about marble racing.
+---
 
-### Controls
+## What it is
 
-- `Tab` to follow an other marble.
-- `ESC` to open and close menu.
+A 3D marble-race game in **Godot 4**, played by a live audience rather than a keyboard:
 
-### Features
+- **Join for free** — any comment spawns that viewer's marble (one per viewer, persistent across rounds).
+- **Gifts drive the action** — the hub routes a gift to a power-up: boost, banana, shell, bomb, chaos, and more.
+- **Skins show status** — your gift tier becomes your marble's colour + glow; your TikTok profile photo becomes your marble's face.
+- **Cinematic-ish camera** follows the leader so the stream always watches the action.
+- **Auto round loop** — lobby → countdown → race → podium → restart, hands-free for the streamer.
 
-- Name your marbles.
-- Start procedural races.
-- Watch the real-time ranking.
+## How it plays on stream
 
-There are two racing modes: **normal** and **explosion**.
-
-In **explosion**, a timer starts, and when it reaches zero the last marble explodes.
-The race is infinite, and the game ends when only one marble remains.
-
-### Screenshots
-
-<div align="center">
-
-<img src="public/publishing/screenshots/screenshot1.png" width="30%"> <img src="public/publishing/screenshots/screenshot2.png" width="30%"> <img src="public/publishing/screenshots/screenshot3.png" width="30%"> <img src="public/publishing/screenshots/screenshot4.png" width="30%"> <img src="public/publishing/screenshots/screenshot5.png" width="30%"> <img src="public/publishing/screenshots/screenshot6.png" width="30%">
-
-</div>
-
-## Installation
-
-### From a release
-
-Released binaries are available on Itch.io and
-on the Github repository, in the release section.
-
-Download the zip archive, accordingly to your OS, and unzip it.
-
-- **Windows**: Double click on `Marble.exe`.
-- **MacOS**: Double click on `Marble.app`.
-- **Linux**: In a terminal, run `./Marble.x86_64`.
-
-### From Snap
-
-With the [Snap command line](https://manpages.ubuntu.com/manpages/focal/en/man8/snap.8.html), run:
 ```
-snap install marble-race
+TikTok comment ─▶ Tikora hub ─▶ viewer's marble spawns in the next race
+TikTok gift    ─▶ Tikora hub ─▶ routed effect ─▶ power-up on the sender's / leader's marble
+TikTok likes   ─▶ Tikora hub ─▶ (broadcast event, available to the game)
 ```
 
-To run the game:
+The game runs in its own native window (or export); Tikora launches it and injects the connection
+details. **The game contains no TikTok code** — the hub owns all of that. See
+[`docs/TIKORA_INTEGRATION.md`](docs/TIKORA_INTEGRATION.md).
+
+## Requirements
+
+- **Godot 4** with **.NET (Mono)** — developed against **4.7.2**.
+- **Tikora** (the desktop hub) running locally, for the live connection.
+- Windows for the current `start.bat` launcher (the Godot project itself is cross-platform).
+
+## Running it
+
+### From Tikora (the intended way)
+The game is registered in Tikora as the slug **`marble-royale`**. Launch it from **Game Store → Marble Royale**.
+Tikora starts [`start.bat`](start.bat) and injects `TIKORA_RELAY_URL`, `TIKORA_GAME_SLUG`, `TIKORA_GAME_KEY`.
+
+### From the Godot editor
+Open `project.godot` in the Godot .NET editor and press **F5**. With Tikora running it will connect
+automatically (generic mode, no key) and start a hub round. Without Tikora it falls back to the
+normal local menu.
+
+### Testing without a live stream
+Inject events into Tikora's relay (Gift Gallery → Inject, or Actions & Events → Simulator). The game
+reacts exactly as it would to real viewers. See [`docs/TIKORA_INTEGRATION.md`](docs/TIKORA_INTEGRATION.md#testing).
+
+## Effects (the game's vocabulary)
+
+Declared in [`tikora.manifest.json`](tikora.manifest.json) and handled in `Main.hub_apply_effect()`:
+
+| Effect | What it does |
+|---|---|
+| `boost` | shove the sender's marble forward |
+| `shield` | (reserved) |
+| `hazard_shell` / `hazard_bomb` | slow/blast the current leader |
+| `hazard_banana` / `slow_leader` | slow the current leader |
+| `freeze_pack` | brief mass slow across the field |
+| `magnet` | pull rivals back toward the sender |
+| `teleport` | short forward phase for the sender |
+| `spawn_decoys` | spawn extra decoy marbles |
+| `chaos` | rattle every marble (big-gift spectacle) |
+| `grant_skin` | give the sender a skin tier |
+| `use_avatar_face` | wrap the sender's profile photo onto their marble |
+
+**Default gift mappings** (seeded into the hub from the manifest) — tier `small`→boost,
+`medium`→banana, `large`→shell, `epic`/`legendary`→chaos, `100+ coins`→bomb. The streamer can
+rebind any of these in Tikora's Trigger → Effect mapper.
+
+## Project layout
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full map. The short version:
+
 ```
-marble-race.marble
+scripts/tikora/tikora_hub.gd         # reusable Tikora hub client (WebSocket, protocol v2)
+scripts/tikora/tikora_controller.gd  # bridges hub events into the game
+scripts/main.gd                      # game controller + hub mode (joins, effects, rounds)
+scripts/marble.gd                    # marble: tier skins + profile-photo face
+tikora.manifest.json                 # effects + default mappings declared to the hub
+start.bat                            # launcher Tikora runs (injects env)
 ```
 
-### From an AppImage
+## Working on it
 
-The AppImage is available on the Github
- repository, in the release section.
+Read [`AGENTS.md`](AGENTS.md) — it has the guardrails, conventions, and the run/verify workflow.
 
-More details on how to run an AppImage, on the
- [official documentation](https://docs.appimage.org/introduction/quickstart.html#how-to-run-an-appimage).
+## Attribution & license
 
-### From source
-
-> [!IMPORTANT]
-> For this installation, you need to have
-> the Godot Editor installed.
-
-Clone the source locally:
-```
-git clone https://github.com/MechanicalFlower/Marble.git
-```
-
-You need to install addons first:
-```
-godot --headless --script plug.gd install
-```
-
-And simply run the game as any Godot project:
-```
-godot
-```
-
-## Development
-
-The project use:
-- [`just`](https://just.systems/man/en/) as command runner,
-- [`pre-commit`](https://pre-commit.com/) to run formatters, this requires [Python 3](https://docs.python.org/3/).
-
-> [!IMPORTANT]
-> Actually, `just` recipes only support Linux.
-
-To check all available recipes, run:
-```
-just
-```
-
-To run formatters:
-```
-just fmt
-```
-
-To install, and run the game:
-```
-just install-addons
-just godot
-```
-
-> [!TIP]
-> In `just` recipes, the Godot Editor is installed
-> automatically. This ensure that you
-> use the right version of the engine.
-
-## Contributing
-
-![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)
-
-We welcome community contributions to this project.
-
-Please read our [Contributor Guide](CONTRIBUTING.md) for more information on how to get started.
-
-## Releasing
-
-Please read our [Release Guide](RELEASING.md) for more information on how we manage our releases.
+- Based on **Marble** © MechanicalFlower, licensed **MIT** (see [`LICENSE.md`](LICENSE.md) and [`CREDITS.md`](CREDITS.md)).
+- Bundled addons: **UniversalFade** (MIT), **godot-debug-menu** (MIT), **gd-plug** (MIT), **export-build-info**.
+- Marble Royale additions © ambitious2223, released under the same MIT licence.
