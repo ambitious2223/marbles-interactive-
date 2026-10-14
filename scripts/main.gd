@@ -36,9 +36,11 @@ var _positions := []
 
 # --- Tikora hub mode ---
 var hub_mode := false
-var _hub_names := {}            # lower(username) -> Marble
+var _hub_names := {}            # lower(username) -> Marble (current round)
 var _hub_tiers := {}            # lower(username) -> tier (persists across rounds)
-var _hub_pending: Array = []    # usernames queued for the next round
+var _hub_roster: Array = []     # persistent viewer keys (one marble per viewer)
+var _hub_display := {}          # key -> display name
+var _hub_pending: Array = []    # (legacy, unused in hub mode)
 var _hub_restart_in := -1.0
 
 @onready var _pause_menu := get_node(^"%Menu") as Menu
@@ -388,6 +390,15 @@ func _process(delta):
 			_hub_restart_in = -1.0
 			start_hub_round()
 
+	# Hub mode: keep the broadcast camera on the current leader.
+	if hub_mode:
+		var lead = _ranking._first_marble
+		if lead != null and is_instance_valid(lead) and lead.visible:
+			if _marble_camera.get_target() != lead:
+				_marble_camera.set_target(lead)
+			if not _marble_camera.is_inside_tree():
+				replace_camera(_marble_camera, [_rotation_camera])
+
 	if not _marble_camera.has_target() or not _marble_camera.get_target().visible:
 		var found = false
 		for marble in _marbles:
@@ -404,6 +415,9 @@ func _process(delta):
 				_podium.set_first(_ranking._first_marble)
 				_podium.set_second(_ranking._second_marble)
 				_podium.set_third(_ranking._third_marble)
+		else:
+			# A marble is visible again — watch it, not the overview.
+			replace_camera(_marble_camera, [_rotation_camera])
 
 	# Check if some marbles are out of bound
 	if _race_has_started and _lower_boundary != null:
@@ -454,7 +468,6 @@ func enable_hub_mode() -> void:
 	hub_mode = true
 	_pause_menu.close()
 	_overlay.hide()
-	_hub_pending.clear()
 	_hub_names.clear()
 	_ensure_marble_capacity(START_ROWS * START_COLS)
 	start_hub_round()
@@ -489,9 +502,10 @@ func start_hub_round() -> void:
 	_mode = State.MODE_MARBLE
 	# Freeze until the countdown so everyone leaves together.
 	get_tree().set_pause(true)
-	for name in _hub_pending:
-		_place_hub_marble(str(name))
-	_hub_pending.clear()
+	# Re-spawn the whole persistent roster so the same viewers stay in the race.
+	_hub_names.clear()
+	for key in _hub_roster:
+		_place_hub_marble(str(_hub_display.get(key, key)))
 	_countdown.connect("countdown_finished", _on_timer_timeout, CONNECT_ONE_SHOT)
 	_countdown.start()
 
@@ -520,19 +534,23 @@ func hub_set_tier(username: String, tier: String) -> void:
 
 
 ## A viewer joined (comment). Place now if racing, otherwise queue for next round.
+## A viewer joined (comment). Adds them to the persistent roster and, if a race
+## is running, drops their marble in immediately (one marble per viewer).
 func hub_join(username: String) -> void:
 	var uname := username.strip_edges()
 	if uname == "":
 		return
-	if _mode == State.MODE_MARBLE:
-		var existing = _hub_names.get(uname.to_lower())
-		if existing != null and existing.visible:
-			return
-		if _place_hub_marble(uname) != null:
-			print("[MarbleRoyale] join: ", uname)
-	else:
-		if not _hub_pending.has(uname):
-			_hub_pending.append(uname)
+	var key := uname.to_lower()
+	_hub_display[key] = uname
+	if not _hub_roster.has(key):
+		_hub_roster.append(key)
+	if _mode != State.MODE_MARBLE:
+		return
+	var existing = _hub_names.get(key)
+	if existing != null and is_instance_valid(existing) and existing.visible:
+		return
+	if _place_hub_marble(uname) != null:
+		print("[MarbleRoyale] join: ", uname)
 
 
 func hub_marble_for(username: String) -> Marble:
