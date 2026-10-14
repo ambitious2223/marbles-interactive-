@@ -14,6 +14,7 @@ func _ready() -> void:
 			_main.report_config()
 	)
 	TikoraHub.chat_received.connect(_on_chat)
+	TikoraHub.like_received.connect(_on_like)
 	TikoraHub.gift_received.connect(_on_gift)
 	TikoraHub.effect_received.connect(_on_effect)
 	if TikoraHub.is_open:
@@ -36,10 +37,23 @@ func _on_chat(ev: Dictionary) -> void:
 		return
 	# Any comment joins the race for free (explicit "!join" also works).
 	_main.hub_join(user)
+	# A comment also gives a fallen marble a second chance (free respawn).
+	_main.hub_request_respawn(user, false)
+	var msg := str(ev.get("message", ev.get("comment", ""))).strip_edges().to_lower()
+	if msg == "!me" or msg == "!stats":
+		_main.hub_show_stats(user)
 	var avatar := str(ev.get("avatar", "")).strip_edges()
 	_main.hub_set_avatar(user, avatar)
 	if avatar != "":
 		_fetch_avatar(user, avatar)
+
+
+func _on_like(ev: Dictionary) -> void:
+	if _main == null:
+		return
+	var user := str(ev.get("username", "")).strip_edges()
+	if user != "":
+		_main.hub_request_respawn(user, false)
 
 
 ## Download a viewer's TikTok profile photo and wrap it onto their marble.
@@ -81,6 +95,9 @@ func _on_gift(ev: Dictionary) -> void:
 		return
 	# Cosmetic side-effect: the gifter's marble wears their gift tier (color/glow).
 	_main.hub_set_tier(user, str(ev.get("tier", "small")))
+	# A gift brings a fallen marble straight back (faster than a free respawn).
+	_main.hub_request_respawn(user, true)
+	_main.hub_add_coins(user, int(ev.get("coins", 0)))
 	var avatar := str(ev.get("avatar", "")).strip_edges()
 	_main.hub_set_avatar(user, avatar)
 	if avatar != "":

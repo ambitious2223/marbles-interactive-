@@ -12,6 +12,7 @@ const MarbleScene := preload("res://scenes/marble.tscn")
 const StreamHudScript := preload("res://scripts/ui/stream_hud.gd")
 
 const CONFIG_PATH := "user://marble_royale.cfg"
+const PLAYERS_PATH := "user://marble_royale_players.json"
 const START_COLS := 3
 # Defaults — overridable from the hub via the `configure` effect (persisted).
 const DEFAULT_CFG := {
@@ -20,11 +21,20 @@ const DEFAULT_CFG := {
 	"alerts": true,
 	"feed": true,
 	"shake": true,
+	"level": 1,
+	"camera": {
+		"cycle": "C", "next": "X",
+		"top1": "1", "top2": "2", "top3": "3",
+		"overview": "O", "auto": "A",
+	},
 }
-var cfg := DEFAULT_CFG.duplicate()
+var cfg := DEFAULT_CFG.duplicate(true)
 var _grid_rows := 8
 var _round_max := 75.0
 var _track_no := 0
+var _level_index := 0        # level used for the NEXT round (0-based)
+var _level_applied := 0      # level currently running (for the HUD)
+var _world_env: WorldEnvironment
 
 const TIME_PERIOD := 5  # 500ms
 
@@ -53,6 +63,11 @@ var _hub_tiers := {}            # lower(username) -> tier (persists across round
 var _hub_roster: Array = []     # persistent viewer keys (one marble per viewer)
 var _hub_display := {}          # key -> display name
 var _hub_avatars := {}          # key -> profile photo URL
+var _downed := {}               # key -> true while their marble has fallen
+var _respawn_at := {}           # key -> seconds timestamp for a free respawn
+var _profiles := {}             # key -> { name, races, wins, top3, streak, coins }
+var _camera_mode := "auto"      # auto | follow | overview
+var _camera_follow = null
 var _hub_pending: Array = []    # (legacy, unused in hub mode)
 var _hub_restart_in := -1.0
 var _hub_round_time := 0.0
@@ -74,13 +89,17 @@ var _hud: StreamHud
 
 func _ready() -> void:
 	_load_config()
+	_load_profiles()
+	_level_index = clamp(int(cfg.get("level", 1)) - 1, 0, max(0, Levels.LEVELS.size() - 1))
 	_rotation_camera = RotationCameraScene.instantiate()
 	_marble_camera = MarbleCameraScene.instantiate()
 	reset_position()
 	set_mode(_mode)
 	add_child(TikoraControllerScript.new())
 	_add_hud()
+	_add_world_env()
 	_apply_config()
+	_setup_camera_input()
 
 
 ## Stream-facing HUD: round status, gift alerts, event feed.
@@ -126,6 +145,149 @@ func _end_hub_round(winner) -> void:
 	hud_status("🥇 %s wins!  New race shortly…" % wname)
 	hud_feed("🥇 %s took 1st place" % wname, Color(1, 0.85, 0.3))
 	hud_celebrate(wname, str(_hub_avatars.get(wname.to_lower(), "")))
+	# Journey: record the result and refresh the all-time board.
+	var wp := _profile(wname.to_lower(), wname)
+	wp.wins = int(wp.wins) + 1
+	wp.streak = int(wp.streak) + 1
+	for m in [_ranking._second_marble, _ranking._third_marble]:
+		if m != null and is_instance_valid(m):
+			var nm := str(m.get_marble_name())
+			var pp := _profile(nm.to_lower(), nm)
+			pp.top3 = int(pp.top3) + 1
+	_save_profiles()
+	_update_leaderboard()
+
+
+# --- Falls + respawn --------------------------------------------------------
+
+func hub_mark_down(key: String, display: String) -> void:
+	if key == "":
+		return
+	_downed[key] = true
+	hud_feed("💫 @%s fell out!" % display, Color(1.0, 0.7, 0.6))
+
+
+## Free respawn via comment/like (after a short delay); instant via gift.
+func hub_request_respawn(username: String, instant: bool) -> void:
+	var key := username.strip_edges().to_lower()
+	if key == "" or not _downed.has(key):
+		return
+	if instant:
+		_do_respawn(key)
+	elif not _respawn_at.has(key):
+		_respawn_at[key] = Time.get_ticks_msec() / 1000.0 + 3.0
+		hud_feed("♻ @%s is spawning again…" % username, Color(0.8, 0.9, 1.0))
+
+
+func _do_respawn(key: String) -> void:
+	_respawn_at.erase(key)
+	_downed.erase(key)
+	var marble = _hub_names.get(key)
+	if marble == null or not is_instance_valid(marble):
+		return
+	var ref = _trailing_marble()
+	if ref != null and ref != marble:
+		marble.global_position = ref.global_position + Vector3.UP * 2.0 + Vector3.BACK * 2.0
+	else:
+		var piece = get_highest_piece()
+		if piece != null:
+			marble.global_position = piece.position + Vector3.UP * 5
+	marble.roll()
+	hud_feed("♻ @%s is back in the race" % str(_hub_display.get(key, key)), Color(0.7, 1.0, 0.8))
+
+
+func _trailing_marble():
+	var best = null
+	for m in _marbles:
+		if m.visible and m.in_race():
+			if best == null or m.get_checkpoint_count() < best.get_checkpoint_count():
+				best = m
+	return best
+
+
+# --- Camera (streamer controls; keys configurable via hub settings) ---------
+
+func _setup_camera_input() -> void:
+	var cam: Dictionary = cfg.get("camera", {})
+	var actions := {
+		"cam_cycle": "cycle", "cam_next": "next",
+		"cam_top1": "top1", "cam_top2": "top2", "cam_top3": "top3",
+		"cam_overview": "overview", "cam_auto": "auto",
+	}
+	for action in actions:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		else:
+			InputMap.action_erase_events(action)
+		var key_name := str(cam.get(actions[action], ""))
+		var kc := OS.find_keycode_from_string(key_name) if key_name != "" else 0
+		if kc != 0:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = kc
+			InputMap.action_add_event(action, ev)
+
+
+func _camera_target_marble():
+	if _camera_mode == "follow" and _camera_follow != null and is_instance_valid(_camera_follow) and _camera_follow.visible:
+		return _camera_follow
+	return _ranking._first_marble
+
+
+func _update_camera() -> void:
+	if _camera_mode == "overview":
+		if not _rotation_camera.is_inside_tree():
+			replace_camera(_rotation_camera, [_marble_camera])
+		_rotation_camera.target = Vector3.ZERO
+		_rotation_camera.distance_to_target = 50.0
+		return
+	var target = _camera_target_marble()
+	if target != null and is_instance_valid(target) and target.visible:
+		if _marble_camera.get_target() != target:
+			_marble_camera.set_target(target)
+		if not _marble_camera.is_inside_tree():
+			replace_camera(_marble_camera, [_rotation_camera])
+
+
+func _set_camera_mode(mode: String, follow = null) -> void:
+	_camera_mode = mode
+	_camera_follow = follow
+	var who := ""
+	if mode == "follow" and follow != null and is_instance_valid(follow):
+		who = " — @%s" % str(follow.get_marble_name())
+	hud_feed("🎥 Camera: %s%s" % [mode, who], Color(0.8, 0.85, 1.0))
+
+
+func _cam_cycle() -> void:
+	if _camera_mode == "auto":
+		_set_camera_mode("follow", _ranking._first_marble)
+	elif _camera_mode == "follow":
+		_set_camera_mode("overview")
+	else:
+		_set_camera_mode("auto")
+
+
+func _cam_next() -> void:
+	var vis := []
+	for m in _marbles:
+		if m.visible and m.in_race():
+			vis.append(m)
+	if vis.is_empty():
+		_set_camera_mode("auto")
+		return
+	var i := vis.find(_camera_follow)
+	_set_camera_mode("follow", vis[(i + 1) % vis.size()])
+
+
+func _cam_follow_rank(n: int) -> void:
+	var m = null
+	if n == 1:
+		m = _ranking._first_marble
+	elif n == 2:
+		m = _ranking._second_marble
+	else:
+		m = _ranking._third_marble
+	if m != null:
+		_set_camera_mode("follow", m)
 
 
 # --- Settings (hub-driven, persisted to user://) ----------------------------
@@ -152,6 +314,7 @@ func _apply_config() -> void:
 	cfg.alerts = _to_bool(cfg.alerts)
 	cfg.feed = _to_bool(cfg.feed)
 	cfg.shake = _to_bool(cfg.shake)
+	cfg.level = clamp(int(cfg.get("level", 1)), 1, max(1, Levels.LEVELS.size()))
 	_grid_rows = int(ceil(float(cfg.capacity) / float(START_COLS)))
 	_round_max = float(cfg.round_seconds)
 	if _hud != null:
@@ -163,10 +326,18 @@ func _apply_config() -> void:
 
 ## The hub can change any setting by sending the `configure` effect with a payload.
 func _hub_configure(payload: Dictionary) -> void:
-	for k in ["capacity", "round_seconds", "alerts", "feed", "shake"]:
+	for k in ["capacity", "round_seconds", "alerts", "feed", "shake", "level"]:
 		if payload.has(k):
 			cfg[k] = payload[k]
 	_apply_config()
+	if payload.has("level"):
+		_level_index = clamp(int(cfg.level) - 1, 0, max(0, Levels.LEVELS.size() - 1))
+		_apply_level(_level_index)
+	if payload.has("camera") and typeof(payload["camera"]) == TYPE_DICTIONARY:
+		var cam: Dictionary = cfg.get("camera", {}).duplicate()
+		cam.merge(payload["camera"], true)
+		cfg["camera"] = cam
+		_setup_camera_input()
 	_save_config()
 	print("[MarbleRoyale] configure: ", cfg)
 	hud_feed("⚙ settings: cap %d · round %ds · alerts %s · shake %s" % [
@@ -191,6 +362,111 @@ func _to_bool(v) -> bool:
 	return bool(v)
 
 
+# --- Viewer journey (per-player profiles) -----------------------------------
+
+func _load_profiles() -> void:
+	if not FileAccess.file_exists(PLAYERS_PATH):
+		return
+	var f := FileAccess.open(PLAYERS_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var data = JSON.parse_string(f.get_as_text())
+	if typeof(data) == TYPE_DICTIONARY:
+		_profiles = data
+
+
+func _save_profiles() -> void:
+	var f := FileAccess.open(PLAYERS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(_profiles))
+
+
+func _profile(key: String, display: String) -> Dictionary:
+	if key == "":
+		key = display.to_lower()
+	if not _profiles.has(key):
+		_profiles[key] = { "name": display, "races": 0, "wins": 0, "top3": 0, "streak": 0, "coins": 0 }
+	else:
+		_profiles[key]["name"] = display
+	return _profiles[key]
+
+
+func hub_add_coins(username: String, coins: int) -> void:
+	var p := _profile(username.to_lower(), username)
+	p.coins = int(p.coins) + coins
+
+
+func hub_show_stats(username: String) -> void:
+	var key := username.to_lower()
+	if not _profiles.has(key):
+		hud_feed("📊 @%s — no races yet" % username, Color(0.9, 0.95, 1.0))
+		return
+	var p: Dictionary = _profiles[key]
+	hud_feed("📊 @%s — %d races · %d wins · %d top-3 · streak %d · %d coins" % [
+		username, int(p.races), int(p.wins), int(p.top3), int(p.streak), int(p.coins)
+	], Color(0.9, 0.95, 1.0))
+
+
+func _alltime_top(n: int) -> Array:
+	var arr := []
+	for k in _profiles.keys():
+		var p: Dictionary = _profiles[k]
+		arr.append({ "name": str(p.get("name", k)), "wins": int(p.get("wins", 0)) })
+	arr.sort_custom(func(a, b): return int(a.wins) > int(b.wins))
+	return arr.slice(0, n)
+
+
+func _update_leaderboard() -> void:
+	if _hud:
+		_hud.set_leaderboard(_alltime_top(5))
+
+
+# --- Levels ----------------------------------------------------------------
+
+func _add_world_env() -> void:
+	var base = load("res://resources/default_env.tres")
+	if base == null:
+		return
+	var env: Environment = base.duplicate(true)
+	_world_env = WorldEnvironment.new()
+	_world_env.environment = env
+	add_child(_world_env)
+
+
+func _level_name() -> String:
+	if Levels.LEVELS.is_empty():
+		return "Level"
+	return str(Levels.LEVELS[_level_applied].get("name", "Level"))
+
+
+func _apply_level(idx: int) -> void:
+	var n := Levels.LEVELS.size()
+	if n == 0:
+		return
+	_level_applied = ((idx % n) + n) % n
+	var lv: Dictionary = Levels.LEVELS[_level_applied]
+	_race._step_count = int(lv.get("steps", 10))
+	_race.piece_pool = lv.get("pool", [])
+	_apply_sky(lv.get("sky", Levels.SKY_DAY))
+	print("[MarbleRoyale] level %d · %s" % [_level_applied + 1, _level_name()])
+
+
+func _apply_sky(cols: Array) -> void:
+	if _world_env == null or cols.size() < 3:
+		return
+	var env: Environment = _world_env.environment
+	if env == null:
+		return
+	env.ambient_light_color = Color(1, 1, 1).lerp(cols[2], 0.4)
+	if env.sky and env.sky.sky_material is ShaderMaterial:
+		var mat: ShaderMaterial = env.sky.sky_material
+		for p in ["day_top_color", "sunset_top_color", "night_top_color"]:
+			mat.set_shader_parameter(p, cols[0])
+		for p in ["day_bottom_color", "sunset_bottom_color", "night_bottom_color"]:
+			mat.set_shader_parameter(p, cols[1])
+		mat.set_shader_parameter("horizon_color", cols[2])
+
+
 func _exit_tree():
 	if not _rotation_camera.is_inside_tree():
 		_rotation_camera.free()
@@ -201,6 +477,21 @@ func _exit_tree():
 func _unhandled_input(event):
 	if event is InputEventKey:
 		if event.pressed:
+			if hub_mode:
+				if event.is_action_pressed("cam_cycle"):
+					_cam_cycle()
+				elif event.is_action_pressed("cam_next"):
+					_cam_next()
+				elif event.is_action_pressed("cam_overview"):
+					_set_camera_mode("overview")
+				elif event.is_action_pressed("cam_auto"):
+					_set_camera_mode("auto")
+				elif event.is_action_pressed("cam_top1"):
+					_cam_follow_rank(1)
+				elif event.is_action_pressed("cam_top2"):
+					_cam_follow_rank(2)
+				elif event.is_action_pressed("cam_top3"):
+					_cam_follow_rank(3)
 			match event.keycode:
 				KEY_F11:
 					var win := get_window()
@@ -524,16 +815,11 @@ func _process(delta):
 			_hub_restart_in = -1.0
 			start_hub_round()
 
-	# Hub mode: keep the broadcast camera on the current leader.
+	# Hub mode: streamer-controllable camera (auto follows the leader).
 	if hub_mode:
-		var lead = _ranking._first_marble
-		if lead != null and is_instance_valid(lead) and lead.visible:
-			if _marble_camera.get_target() != lead:
-				_marble_camera.set_target(lead)
-			if not _marble_camera.is_inside_tree():
-				replace_camera(_marble_camera, [_rotation_camera])
+		_update_camera()
 
-	if not _marble_camera.has_target() or not _marble_camera.get_target().visible:
+	if not hub_mode and (not _marble_camera.has_target() or not _marble_camera.get_target().visible):
 		var found = false
 		for marble in _marbles:
 			if marble.visible:
@@ -564,6 +850,14 @@ func _process(delta):
 				and marble.global_transform.origin.y + 100 < _lower_boundary
 			):
 				marble.out_of_bound()
+				if hub_mode:
+					var nm := str(marble.get_marble_name())
+					hub_mark_down(nm.to_lower(), nm)
+	if not _respawn_at.is_empty():
+		var now_s := Time.get_ticks_msec() / 1000.0
+		for key in _respawn_at.keys():
+			if now_s >= float(_respawn_at[key]):
+				_do_respawn(key)
 
 
 # Handle victory conditions on explosion mode
@@ -626,9 +920,10 @@ func start_hub_round() -> void:
 	_overlay.reset()
 	reset_position()
 	_explosion_enabled = false
-	# New random track each round (varied length = a fresh "level" every race).
 	_track_no += 1
-	_race._step_count = randi_range(8, 14)
+	# Apply the current level (length, piece mix, sky) then advance for next round.
+	_apply_level(_level_index)
+	_level_index = (_level_index + 1) % Levels.LEVELS.size()
 	_race.generate_race(true)
 	_lower_boundary = get_lowest_piece(_race, true).global_transform.origin.y
 	_max_checkpoint_count = -1
@@ -645,7 +940,7 @@ func start_hub_round() -> void:
 	_hub_names.clear()
 	for key in _hub_roster:
 		_place_hub_marble(str(_hub_display.get(key, key)))
-	hud_status("Track #%d — comment to join, starting soon…" % _track_no)
+	hud_status("Level %d · %s — comment to join" % [_level_applied + 1, _level_name()])
 	_countdown.connect("countdown_finished", _on_timer_timeout, CONNECT_ONE_SHOT)
 	_countdown.start()
 
@@ -662,6 +957,8 @@ func _place_hub_marble(username: String) -> Marble:
 	_overlay.add_marble_rank(marble)
 	_hub_names[username.to_lower()] = marble
 	_marble_camera.set_target(marble)
+	var p := _profile(username.to_lower(), username)
+	p.races = int(p.races) + 1
 	return marble
 
 
@@ -684,6 +981,9 @@ func hub_join(username: String) -> void:
 	_hub_display[key] = uname
 	if not _hub_roster.has(key):
 		_hub_roster.append(key)
+		var p := _profile(key, uname)
+		if int(p.get("races", 0)) > 0:
+			hud_feed("👋 Welcome back @%s — %d wins" % [uname, int(p.get("wins", 0))], Color(1.0, 0.9, 0.6))
 	if _mode != State.MODE_MARBLE:
 		return
 	var existing = _hub_names.get(key)
@@ -694,6 +994,7 @@ func hub_join(username: String) -> void:
 		print("[MarbleRoyale] join: ", uname)
 		hud_status("🏁 %d marbles racing — comment to join" % _hub_names.size())
 		hud_feed("➕ @%s joined" % uname, Color(0.7, 0.9, 1.0))
+		_update_leaderboard()
 
 
 func hub_marble_for(username: String) -> Marble:

@@ -11,6 +11,8 @@ var _alert: PanelContainer
 var _alert_avatar: TextureRect
 var _alert_text: RichTextLabel
 var _feed: VBoxContainer
+var _lb_panel: PanelContainer
+var _lb: VBoxContainer
 var _celebrate: PanelContainer
 var _celebrate_avatar: TextureRect
 var _celebrate_text: RichTextLabel
@@ -99,6 +101,25 @@ func _build_ui() -> void:
 	_feed.add_theme_constant_override("separation", 4)
 	root.add_child(_feed)
 
+	# --- All-time leaderboard (bottom right) ---
+	_lb_panel = PanelContainer.new()
+	_lb_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_lb_panel.offset_left = -240
+	_lb_panel.offset_right = -16
+	_lb_panel.offset_top = -190
+	_lb_panel.offset_bottom = -16
+	var lbsb := StyleBoxFlat.new()
+	lbsb.bg_color = Color(0.05, 0.06, 0.10, 0.66)
+	lbsb.set_corner_radius_all(10)
+	lbsb.set_content_margin_all(10)
+	_lb_panel.add_theme_stylebox_override("panel", lbsb)
+	root.add_child(_lb_panel)
+
+	_lb = VBoxContainer.new()
+	_lb.alignment = BoxContainer.ALIGNMENT_END
+	_lb.add_theme_constant_override("separation", 2)
+	_lb_panel.add_child(_lb)
+
 	# --- Winner celebration (center) ---
 	_celebrate = PanelContainer.new()
 	_celebrate.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -153,6 +174,31 @@ func set_alerts_enabled(on: bool) -> void:
 func set_feed_enabled(on: bool) -> void:
 	if _feed:
 		_feed.visible = on
+
+
+## All-time leaderboard from the game (entries: [{ name, wins }]).
+func set_leaderboard(entries: Array) -> void:
+	if _lb == null:
+		return
+	for c in _lb.get_children():
+		c.queue_free()
+	var title := Label.new()
+	title.text = "ALL-TIME"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.86, 0.5))
+	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	title.add_theme_constant_override("outline_size", 4)
+	_lb.add_child(title)
+	var i := 0
+	for e in entries:
+		i += 1
+		var lbl := Label.new()
+		lbl.text = "%d. %s · %d" % [i, str(e.get("name", "?")), int(e.get("wins", 0))]
+		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		lbl.add_theme_constant_override("outline_size", 4)
+		_lb.add_child(lbl)
 
 
 ## A big gift alert with the gifter's avatar.

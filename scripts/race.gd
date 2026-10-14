@@ -12,6 +12,9 @@ const Group = preload("res://scripts/constants/groups.gd")
 # Number of steps in the race generation
 var _step_count := 10
 
+# Optional restricted piece set (indices into PieceList.PIECES); empty = any.
+var piece_pool: Array = []
+
 var _previous_piece = null
 var _previous_piece_orientation = null
 var _previous_rotation_index := 0
@@ -78,6 +81,8 @@ func clear_previous_pieces() -> void:
 
 # Function to select a random piece index
 func randomize_piece_index() -> int:
+	if piece_pool.size() > 0:
+		return int(piece_pool[randi() % piece_pool.size()])
 	return Race.umod(randi(), len(PieceList.PIECES) - 2)
 
 
