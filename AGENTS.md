@@ -101,7 +101,8 @@ If `tikora_hub.gd` needs a change that is game-specific, that's a smell — keep
   routing; tier skins; profile-photo faces; capacity 24; camera follows the leader; auto round loop;
   registered in Tikora as `marble-royale`.
 - **Open / TODO:**
-  - PS1 visual pass (SubViewport low-res + dither + fog + low-poly).
+  - **Visual direction: clean / polished.** A retro/PS1 pass (low-res + dither + fog) was tried and
+    **rejected by the owner** — do **not** re-apply it. Prefer clean rendering + on-screen polish.
   - Verify a real live session launched from the Tikora **Game Store** (with real avatars).
   - `shield` effect is a no-op placeholder.
   - No sound/HUD yet (gift alerts, kill feed, lobby timer UI).
